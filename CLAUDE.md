@@ -3,6 +3,7 @@
 Project: Nine Tails. Full spec lives with the owner; the rules below are the load-bearing ones.
 
 ## Rules
+- COMMIT AND PUSH EVERYTHING TO MAIN, DO NOT CREATE NEW BRANCHES.
 - Never invent GPIOs, battery capacity, current draw or peripheral capability. Unknowns go in `docs/hardware.md` as UNVERIFIED and behind an interface.
 - Firmware owns hardware safety (power, brightness, mic). The host only *requests*. The LLM never sends raw device commands: typed actions -> host validation -> signed protocol message -> device validation.
 - Accepted != done. Completion is a separate event.
