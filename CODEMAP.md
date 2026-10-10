@@ -20,6 +20,11 @@
 | `companion/storage.py` | `ChecksumJSON` atomic checksummed JSON (used by onboarding; older stores have their own copies) |
 | `companion/application/onboarding.py` | `Onboarding` flow: core questions, paced optional steps, answer parsing, effects, device sync; `load_copy`, `parse_name` |
 | `companion/application/onboarding_default.yaml`, `species/*/onboarding.yaml` | Scripted copy + option keywords (species deep-merges over default) |
+| `companion/application/ws_transport.py` | `WebSocketHostTransport` (wss server in a thread, `DeviceTransport`), `mac_gate`, ssl context helpers, `TokenBucket` |
+| `companion/application/clock.py` | `SystemClock` |
+| `simulator/ws_link.py` | `DeviceLink`: simulated device dials host over wss, reconnect/backoff, offline ticking, sleep closes socket |
+| `tools/gen_certs.py` | Private CA + server cert generator (ECDSA P-256), cross-platform |
+| `tests/integration/test_wss.py` | Real TLS loopback tests: roundtrip, wrong CA/host, pre-auth, flood, reconnect, sleep/wake |
 | `species/<name>/personality.yaml` | Character configs (ninetales, cubone) |
 | `species/ninetales/growth.yaml` | Needs rates, event effects, daily caps, stage requirements |
 | `docs/` | architecture, decisions, hardware (unknowns), boundary, protocol, security, privacy, psychology-design, roadmap |

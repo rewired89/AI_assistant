@@ -11,6 +11,10 @@ class Clock(Protocol):
     def sleep(self, seconds: float) -> None: ...
 
 
+class TransportClosed(Exception):
+    """No live connection to the device."""
+
+
 class DeviceTransport(ABC):
     """Moves opaque signed bytes. Knows nothing about message meaning."""
 

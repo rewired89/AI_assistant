@@ -194,6 +194,13 @@ class SimulatedDevice:
             if self.capture:
                 self._stop_capture("low_battery")
 
+    def announce(self) -> bytes:
+        """First frame after (re)connecting: current battery/power state, so the host learns status
+        without the device claiming a reboot (device.ready is boot-only)."""
+        self._emit("battery.updated", {"percent": self.battery, "power_state": self.power.value,
+                                       "warning": self.battery <= self.th.warn})
+        return self._flush()[0]
+
     # ---- physical inputs ----------------------------------------------
     def press_button(self, kind: str = "single", button: str = "main") -> list[bytes]:
         if self.power is P.SLEEPING:

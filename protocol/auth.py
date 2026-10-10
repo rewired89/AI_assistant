@@ -40,14 +40,20 @@ class Authenticator:
         signed["auth"]["mac"] = mac
         return signed
 
-    def verify(self, msg: dict) -> None:
+    def verify_mac(self, msg: dict) -> None:
+        """MAC and timestamp only; does not consume the nonce. For pre-checks (e.g. a connection
+        gate) that must not break the full verify() done later by the real consumer."""
         mid = msg.get("message_id")
         expected = hmac.new(self._secret, _signing_input(msg), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected, msg["auth"]["mac"]):
             raise ProtocolError("auth_failed", "bad MAC", mid)
-        now = self._clock()
-        if abs(now - msg["auth"]["ts"]) > WINDOW_SECONDS:
+        if abs(self._clock() - msg["auth"]["ts"]) > WINDOW_SECONDS:
             raise ProtocolError("auth_failed", "timestamp outside window", mid)
+
+    def verify(self, msg: dict) -> None:
+        mid = msg.get("message_id")
+        self.verify_mac(msg)
+        now = self._clock()
         nonce = msg["auth"]["nonce"]
         for n in [n for n, t in self._seen.items() if now - t > 2 * WINDOW_SECONDS]:
             del self._seen[n]
