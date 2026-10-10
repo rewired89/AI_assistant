@@ -61,6 +61,7 @@ class DeviceClient:
     captures: dict[int, Capture] = field(default_factory=dict)
     playback_results: dict[str, dict] = field(default_factory=dict)
     audio_dropped: int = 0
+    listeners: list = field(default_factory=list)
     _stream_counter: int = 0
     _active_playback: set = field(default_factory=set)
 
@@ -83,6 +84,10 @@ class DeviceClient:
             self._apply(msg)
         for raw in self.transport.receive_binary():
             self._on_audio(raw)
+
+    def add_listener(self, fn) -> None:
+        """fn(event_message) is called for every verified device event that is not a command reply."""
+        self.listeners.append(fn)
 
     def _on_audio(self, raw: bytes) -> None:
         try:
@@ -139,47 +144,18 @@ class DeviceClient:
         return self.wait_capture(cap, timeout_s)
 
     # ---- audio: playback ------------------------------------------------------------
+    def begin_playback(self, pcm: bytes, style: str = "normal", volume: int | None = None, prebuffer_s: float = 0.5,
+                       timeout_s: float | None = None) -> "PlaybackJob":
+        """Non-blocking playback: call job.step() from your loop. See PlaybackJob."""
+        return PlaybackJob(self, pcm, style, volume, prebuffer_s, timeout_s)
+
     def play_pcm(self, pcm: bytes, style: str = "normal", volume: int | None = None, prebuffer_s: float = 0.5,
                  timeout_s: float | None = None) -> Outcome:
-        """Stream PCM16/16k/mono to the speaker: send `prebuffer_s` of audio at once, then keep the
-        lead at that size by pacing at exactly real time (the device drains at its sample clock, and
-        its buffer holds ~2 s, so running faster than real time would overrun it). Returns when the
-        device reports playback complete, not when the last byte was sent."""
-        if len(pcm) % 2:
-            raise ValueError("PCM16 data must have an even number of bytes")
-        if not 0.1 <= prebuffer_s <= 1.5:
-            raise ValueError("prebuffer_s must be between 0.1 and 1.5 s (device buffer is ~2 s)")
-        stream_id, stream_no = "s" + uuid.uuid4().hex[:10], self._alloc_stream()
-        payload = {"stream_id": stream_id, "stream_no": stream_no, "format": "pcm16_16k_mono", "style": style}
-        if volume is not None:
-            payload["volume"] = volume
-        out = self.send("audio.play", payload)
-        self._active_playback.add(stream_no)
-        t0 = self.clock.now()
-        limit = timeout_s if timeout_s is not None else aud.pcm_seconds(len(pcm)) + 10
-        sent = seq = 0
-        end_sent = False
-        try:
-            while True:
-                self.pump()
-                if out.failed:
-                    raise CommandRejected(*out.failed)
-                if out.completed:
-                    return out
-                if self.clock.now() - t0 > limit:
-                    raise CommandTimeout("playback did not complete")
-                if out.accepted:
-                    allowed = (prebuffer_s + (self.clock.now() - t0)) * aud.BYTES_PER_SECOND
-                    while sent < len(pcm) and sent <= allowed:
-                        chunk = pcm[sent:sent + aud.CHUNK_BYTES]
-                        self.transport.send_binary(aud.pack(aud.KIND_PLAYBACK, stream_no, seq, chunk))
-                        sent, seq = sent + len(chunk), seq + 1
-                    if sent >= len(pcm) and not end_sent:
-                        self.transport.send_binary(aud.pack(aud.KIND_PLAYBACK, stream_no, seq, b"", end=True))
-                        end_sent = True
-                self.clock.sleep(0.02)
-        finally:
-            self._active_playback.discard(stream_no)
+        """Blocking convenience wrapper over PlaybackJob."""
+        job = self.begin_playback(pcm, style, volume, prebuffer_s, timeout_s)
+        while not job.step():
+            self.clock.sleep(0.02)
+        return job.out
 
     def stop_playback(self, stream_id: str, timeout_s: float = 5.0) -> Outcome:
         return self.request("audio.stop_playback", {"stream_id": stream_id}, timeout_s=timeout_s)
@@ -198,9 +174,14 @@ class DeviceClient:
                 for cap in self.captures.values():
                     if cap.capture_id == p["capture_id"]:
                         cap.stop_reason = p["reason"]
+                        if cap.corrupt:      # its END frame may have been dropped as out-of-sequence; the event is final
+                            cap.done = True
             elif t == "audio.playback.finished":
                 self.playback_results[p["stream_id"]] = p
             self.events.append(msg)
+            del self.events[:-500]                    # keep memory bounded; use add_listener for real consumption
+            for fn in list(self.listeners):
+                fn(msg)
 
     def request(self, mtype: str, payload: dict | None = None, timeout_s: float = 5.0,
                 until: str = "completed") -> Outcome:
@@ -228,6 +209,72 @@ def backoff_delays(base: float = 1.0, cap: float = 30.0, jitter: float = 0.2,
     while True:
         yield min(cap, delay) * (1 + rng.uniform(-jitter, jitter))
         delay = min(cap, delay * 2)
+
+
+class PlaybackJob:
+    """One audio.play stream. Sends `prebuffer_s` of audio at once, then holds that lead by pacing at exactly
+    real time (the device drains at its sample clock and buffers ~2 s, so faster would overrun it).
+    step() returns True only when the device reports the audio played out, never merely when it was sent.
+    Raises CommandRejected / CommandTimeout if the device refuses, aborts or goes quiet."""
+
+    def __init__(self, client: "DeviceClient", pcm: bytes, style: str, volume: int | None,
+                 prebuffer_s: float, timeout_s: float | None):
+        if len(pcm) % 2:
+            raise ValueError("PCM16 data must have an even number of bytes")
+        if not 0.1 <= prebuffer_s <= 1.5:
+            raise ValueError("prebuffer_s must be between 0.1 and 1.5 s (device buffer is ~2 s)")
+        self.c, self.pcm, self.prebuffer_s = client, pcm, prebuffer_s
+        self.stream_id, self.stream_no = "s" + uuid.uuid4().hex[:10], client._alloc_stream()
+        payload = {"stream_id": self.stream_id, "stream_no": self.stream_no, "format": "pcm16_16k_mono", "style": style}
+        if volume is not None:
+            payload["volume"] = volume
+        self.out = client.send("audio.play", payload)
+        client._active_playback.add(self.stream_no)
+        self.t0 = client.clock.now()
+        self.limit = timeout_s if timeout_s is not None else aud.pcm_seconds(len(pcm)) + 10
+        self.sent = self.seq = 0
+        self.end_sent = self.finished = False
+
+    def _release(self) -> None:
+        self.finished = True
+        self.c._active_playback.discard(self.stream_no)
+
+    def step(self) -> bool:
+        if self.finished:
+            return True
+        c = self.c
+        try:
+            c.pump()
+            if self.out.failed:
+                raise CommandRejected(*self.out.failed)
+            if self.out.completed:
+                self._release()
+                return True
+            if c.clock.now() - self.t0 > self.limit:
+                raise CommandTimeout("playback did not complete")
+            if self.out.accepted:
+                allowed = (self.prebuffer_s + (c.clock.now() - self.t0)) * aud.BYTES_PER_SECOND
+                while self.sent < len(self.pcm) and self.sent <= allowed:
+                    chunk = self.pcm[self.sent:self.sent + aud.CHUNK_BYTES]
+                    c.transport.send_binary(aud.pack(aud.KIND_PLAYBACK, self.stream_no, self.seq, chunk))
+                    self.sent, self.seq = self.sent + len(chunk), self.seq + 1
+                if self.sent >= len(self.pcm) and not self.end_sent:
+                    c.transport.send_binary(aud.pack(aud.KIND_PLAYBACK, self.stream_no, self.seq, b"", end=True))
+                    self.end_sent = True
+        except BaseException:
+            self._release()
+            raise
+        return False
+
+    def cancel(self) -> None:
+        """Barge-in: stop the speaker now. Best effort; the stream is released either way."""
+        try:
+            if not self.finished:
+                self.c.stop_playback(self.stream_id, timeout_s=2.0)
+        except Exception:
+            pass
+        finally:
+            self._release()
 
 
 class LoopbackTransport(DeviceTransport):

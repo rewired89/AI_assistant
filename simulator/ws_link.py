@@ -30,6 +30,7 @@ class DeviceLink:
         self.failures = 0
         self.last_error: BaseException | None = None
         self.dropped_offline = 0
+        self._outbox: list = []
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stop: asyncio.Event | None = None
         self._thread: threading.Thread | None = None
@@ -68,6 +69,11 @@ class DeviceLink:
         self._loop.call_soon_threadsafe(go)
         return fut.result(timeout)
 
+    def inject(self, fn: Callable[[], list]):
+        """Run fn() on the link thread and queue the device output it returns (e.g. press_button,
+        set_battery) for sending on the live connection, as the firmware's event loop would."""
+        return self.call(lambda: self._outbox.extend(fn()))
+
     async def _main(self, ready: threading.Event) -> None:
         self._loop, self._stop = asyncio.get_running_loop(), asyncio.Event()
         ready.set()
@@ -97,6 +103,9 @@ class DeviceLink:
 
     async def _session(self, ws, stop: asyncio.Event) -> None:
         while not stop.is_set():
+            if self._outbox:
+                pending, self._outbox = self._outbox, []
+                await self._send_all(ws, pending)
             await self._send_all(ws, self.device.tick())
             if self.device.power is PowerState.SLEEPING:
                 return
