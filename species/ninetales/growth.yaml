@@ -1,0 +1,34 @@
+# Transparent growth rules. Schema: companion/tamagotchi/rules.py
+# Nothing here punishes absence: affection, trust, experience and stage never decay.
+schema_version: 1
+growth_enabled: true
+
+needs:
+  energy_decay_per_hour: 0.04
+  energy_recovery_per_hour: 0.15
+  sleepiness_gain_per_hour: 0.05
+  sleepiness_recovery_per_hour: 0.25
+  drift_per_hour: 0.02          # happiness/curiosity/playfulness drift toward baseline
+  happiness_baseline: 0.6
+  happiness_floor: 0.4          # absence never pushes happiness below this
+  curiosity_baseline: 0.5
+  playfulness_baseline: 0.4
+
+# Effects are deltas on 0..1 values. xp is experience before diminishing returns.
+# gain = xp * 0.5 ** (times_today / half_life), clipped to the kind's remaining daily_xp_cap.
+events:
+  greeting:        {xp: 0.2, daily_xp_cap: 0.6, half_life: 2, affection: 0.01}
+  conversation:    {xp: 1.0, daily_xp_cap: 5,   half_life: 5, happiness: 0.03, affection: 0.01, trust: 0.01, energy: -0.01}
+  play:            {xp: 2.0, daily_xp_cap: 6,   half_life: 3, happiness: 0.08, playfulness: 0.10, energy: -0.06}
+  teach:           {xp: 3.0, daily_xp_cap: 9,   half_life: 3, curiosity: 0.08, trust: 0.01, energy: -0.02}
+  explore_topic:   {xp: 2.0, daily_xp_cap: 6,   half_life: 3, curiosity: 0.10, happiness: 0.02, energy: -0.02}
+  feed:            {xp: 0.5, daily_xp_cap: 1.5, half_life: 2, energy: 0.10, happiness: 0.02}
+  optional_activity: {xp: 2.0, daily_xp_cap: 4, half_life: 2, happiness: 0.03, trust: 0.01}
+
+# A stage needs enough xp AND variety AND any listed per-kind counts (lifetime).
+stages:
+  - {name: EGG,                 min_xp: 0,   min_kinds: 0, required: {}}
+  - {name: BABY,                min_xp: 5,   min_kinds: 2, required: {}}
+  - {name: YOUNG,               min_xp: 25,  min_kinds: 3, required: {}}
+  - {name: NINE_TAILS,          min_xp: 70,  min_kinds: 4, required: {teach: 3, play: 3}}
+  - {name: PERSONALIZED_NINE_TAILS, min_xp: 150, min_kinds: 5, required: {teach: 10, explore_topic: 5}}

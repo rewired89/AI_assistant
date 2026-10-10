@@ -12,7 +12,10 @@
 | `companion/application/device_client.py` | `DeviceClient` (accepted vs completed, timeouts), `LoopbackTransport`, `backoff_delays` |
 | `companion/personality/config.py` | Personality schema, `load`, `apply_update`, bounded `Personality.adapt` |
 | `companion/scheduling/sleep.py` | `resolve_wake`, `build_sleep_payload`, ambiguity/clock errors |
+| `companion/tamagotchi/rules.py` | Growth-rules schema + validation (`load`, `validate`) |
+| `companion/tamagotchi/state.py` | `CharacterState` (needs, mood, events, stage growth), `StateStore` (checksummed persistence) |
 | `species/<name>/personality.yaml` | Character configs (ninetales, cubone) |
+| `species/ninetales/growth.yaml` | Needs rates, event effects, daily caps, stage requirements |
 | `docs/` | architecture, decisions, hardware (unknowns), boundary, protocol, security, privacy, psychology-design, roadmap |
 | `tests/` | pytest suites: protocol, firmware (simulated), companion |
-| `firmware/`, `assets/`, `companion/{memory,tamagotchi,behavior,speech,conversation,psychology}` | Empty placeholders (.gitkeep) |
+| `firmware/`, `assets/`, `companion/{memory,behavior,speech,conversation,psychology}` | Empty placeholders (.gitkeep) |
