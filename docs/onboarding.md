@@ -1,0 +1,8 @@
+# Onboarding
+
+Core (asked immediately, never blocks): her name, then what to call the companion. Everything else is optional, offered one question at a time at least 4 h apart (first one 30 min after setup), never while quiet or sleeping: communication style, how often it may speak first, nap behavior, memory preference, reflection-helper opt-in, voice (only if voices are configured), privacy note (only if text is configured).
+Per question: "skip" = never ask again, "later/not now" = ask again in 24 h, two unclear answers = move on (core names: continue without a name). Unanswered optional questions lapse after 30 min without nagging.
+Persistence: `Onboarding` stores answers, pending question, skipped/deferred and a config *patch* (not a full config copy) in a checksummed file; restarts resume exactly where she left off and never repeat answered steps. Corrupt file restarts onboarding.
+Effects: patch validated through `personality.config.apply_update`; memory preference toggles categories on the store; sleep preference is pushed as `device.set_config` and kept pending if the device is asleep/offline (`sync_device()` on reconnect).
+Reflection helper: yes sets `psychological_growth_features: on`, no sets `off`, skipped stays `opt_in`. It never enables the sensitive reflection vault, which needs consent per save.
+Known limits: name detection is heuristic ("I'm tired" is rejected, an odd 3-word phrase can pass), so names must be inserted into LLM prompts as quoted data, never as instructions. Idle-sleep seconds are stored on the device but the simulator does not act on them. Not yet wired to speech.

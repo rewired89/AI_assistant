@@ -1,0 +1,5 @@
+steps:
+  user_name:
+    ask: "Ready. What should I call you?"
+    ack: "{value}. Noted."
+  core_done: "Setup done, {user_name}. Ask me for anything."

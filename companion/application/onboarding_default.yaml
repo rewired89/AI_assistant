@@ -1,0 +1,67 @@
+# Default onboarding copy and option semantics. Species files override any key (deep merge).
+# Scripted on purpose: onboarding must work with no LLM and no network.
+version: 1
+steps:
+  user_name:
+    ask: "Hello! I'm new here. What should I call you?"
+    reask: "Sorry, I didn't catch that. What name should I use for you?"
+    ack: "Nice to meet you, {value}."
+    ack_skip: "No problem, we can do names later."
+  companion_name:
+    ask: "And what would you like to call me? You can keep {companion_name}."
+    reask: "What name would you like for me? Or say keep to stay {companion_name}."
+    ack: "{value} it is."
+    ack_keep: "Great, I'll stay {value}."
+  core_done: "All set, {user_name}. We can finish getting to know each other little by little."
+  later: "Sure, I'll ask another time."
+  skipped: "Okay, skipping that. You can change it anytime."
+  communication_style:
+    ask: "How should I talk? Short and sweet, chatty, playful, or calm?"
+    reask: "Which sounds best: short, chatty, playful, or calm?"
+    ack: "Got it, {label}."
+    options:
+      short:   {label: "short and sweet", keywords: [short, brief, sweet, concise, quick]}
+      chatty:  {label: "chatty", keywords: [chatty, talkative, long, detailed, more]}
+      playful: {label: "playful", keywords: [playful, fun, silly, cute, goofy]}
+      calm:    {label: "calm", keywords: [calm, gentle, quiet, soft, relaxed]}
+  notification_frequency:
+    ask: "How often may I start a chat on my own? Never, rarely, or sometimes?"
+    reask: "Never, rarely, or sometimes?"
+    ack: "Okay, {label}."
+    options:
+      never:     {label: "never", keywords: [never, none, nope, silent]}
+      rarely:    {label: "rarely", keywords: [rarely, seldom, few, hardly]}
+      sometimes: {label: "sometimes", keywords: [sometimes, occasionally, often, regularly]}
+  sleep_behavior:
+    ask: "When nobody is around, should I nap soon to save battery, nap after a while, or stay up?"
+    reask: "Nap soon, nap after a while, or stay up?"
+    ack: "Okay, {label}."
+    options:
+      soon:  {label: "nap soon", keywords: [soon, quickly, fast, save, battery]}
+      while: {label: "nap after a while", keywords: [while, later, normal, balanced, medium]}
+      stay:  {label: "stay up", keywords: [stay, awake, up, always, long]}
+  memory_preference:
+    ask: "Want me to remember things about you? Remember things, only what you tell me to, or nothing at all?"
+    reask: "Remember things, only what you tell me to remember, or nothing?"
+    ack: "Okay: {label}. You can look at or delete anything I remember whenever you like."
+    options:
+      remember: {label: "remember things", keywords: [remember, things, "yes", everything, sure]}
+      minimal:  {label: "only what you tell me to", keywords: [only, tell, minimal, explicit, told]}
+      nothing:  {label: "nothing at all", keywords: [nothing, none, forget, "no"]}
+  psychology_optin:
+    ask: "I can also help you think through feelings or hard conversations, only when you ask. It is private, you can pause it, and it is not therapy. Want that available?"
+    reask: "Yes or no: want the reflection helper available? You can say not now."
+    ack_yes: "Okay, it's available whenever you ask. I'll always check with you first."
+    ack_no: "Okay, I'll keep it off."
+    yes_words: ["yes", yeah, yep, sure, okay, ok, please, available]
+    no_words: ["no", nope, "off", never]
+  voice:
+    ask: "Pick my voice: {voices}."
+    reask: "Which voice: {voices}?"
+    ack: "I'll use {label}."
+  privacy_info:
+    ask: "{privacy_text}"
+    ack: "Thanks for listening."
+skip_words: [skip, pass, "no thanks"]
+later_words: [later, "not now", tomorrow, "ask me later", "another time"]
+keep_words: [keep, same, fine, "that's fine", default]
