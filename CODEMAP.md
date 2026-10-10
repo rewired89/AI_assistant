@@ -16,8 +16,9 @@
 | `companion/tamagotchi/state.py` | `CharacterState` (needs, mood, events, stage growth), `StateStore` (checksummed persistence) |
 | `companion/memory/store.py` | `MemoryStore` (profile/episodic/semantic/goal_habit), `ReflectionVault` (separate file, consent per write), user-bound files, retention, export |
 | `companion/memory/extraction.py` | `extract_candidates` (rules) + `decide` save/ask/drop policy |
+| `companion/behavior/engine.py` | `BehaviorEngine.react(stimulus)` -> `Plan` (animation, voice style, `Intent`s); `to_commands` -> validated `animation.play`; proactive gating |
 | `species/<name>/personality.yaml` | Character configs (ninetales, cubone) |
 | `species/ninetales/growth.yaml` | Needs rates, event effects, daily caps, stage requirements |
 | `docs/` | architecture, decisions, hardware (unknowns), boundary, protocol, security, privacy, psychology-design, roadmap |
 | `tests/` | pytest suites: protocol, firmware (simulated), companion |
-| `firmware/`, `assets/`, `companion/{behavior,speech,conversation,psychology}` | Empty placeholders (.gitkeep) |
+| `firmware/`, `assets/`, `companion/{speech,conversation,psychology}` | Empty placeholders (.gitkeep) |

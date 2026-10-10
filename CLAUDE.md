@@ -18,5 +18,5 @@ Project: Nine Tails. Full spec lives with the owner; the rules below are the loa
 `pytest` (Python 3.11+, deps: jsonschema, pyyaml). Windows/PowerShell for user-facing commands.
 
 ## Status
-Done (simulated only): protocol v1 schemas/codec/HMAC auth, simulated device (power FSM, sleep/wake persistence, battery thresholds, corruption recovery, dedupe), host device client, sleep-time builder, personality schema/validation, tamagotchi state model (needs, mood, caps, staged growth, persistence; rules in `species/*/growth.yaml`), memory (SQLite store + separate consent-gated reflection vault, retention, dedup, pending AI inferences, rule-based extraction).
-Not started: firmware, memory encryption at rest, embeddings, behavior engine (event->animation/dialogue mapping), speech, LLM, psychology engine, WebSocket/TLS transport, OTA.
+Done (simulated only): protocol v1 schemas/codec/HMAC auth, simulated device (power FSM, sleep/wake persistence, battery thresholds, corruption recovery, dedupe), host device client, sleep-time builder, personality schema/validation, tamagotchi state model (needs, mood, caps, staged growth, persistence; rules in `species/*/growth.yaml`), memory (SQLite store + separate consent-gated reflection vault, retention, dedup, pending AI inferences, rule-based extraction), behavior engine (stimulus -> Plan of animation + voice style + dialogue intents; proactive gating; no-guilt constraints).
+Not started: firmware, memory encryption at rest, embeddings, dialogue text generation, speech, LLM, psychology engine, WebSocket/TLS transport, OTA.
