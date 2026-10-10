@@ -14,7 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable
 
-from protocol import (Authenticator, ProtocolError, SUPPORTED_VERSIONS, build, check_version,
+from protocol import (Authenticator, KeyRing, ProtocolError, SUPPORTED_VERSIONS, build, check_version,
                       decode, encode, validate_payload)
 
 FIRMWARE_VERSION = "sim-0.1"
@@ -103,21 +103,54 @@ class CommandFailure(Exception):
 
 
 class SimulatedDevice:
-    def __init__(self, secret: bytes, storage: Storage, clock: Callable[[], float],
-                 thresholds: Thresholds | None = None, battery_percent: int = 100):
+    def __init__(self, secret: "bytes | KeyRing | None", storage: Storage, clock: Callable[[], float],
+                 thresholds: Thresholds | None = None, battery_percent: int = 100, device_id: str | None = None):
+        """`secret` only seeds the key ring when flash holds none (factory provisioning in tests);
+        keys already in storage win, so rotations survive restarts. None = unprovisioned device."""
         self.clock = clock
         self.storage = storage
-        self.auth = Authenticator(secret, clock)
         self.th = thresholds or Thresholds()
         self.battery = battery_percent
         self.rejected_count = 0
+        self._secure = False
         self.state, self.recovered = storage.load()
+        self.auth: Authenticator | None = None
+        if self.state.get("keys"):
+            self._set_keys(KeyRing.from_dict(self.state["keys"]), self.state.get("device_id"))
+        elif secret is not None:
+            self._set_keys(secret if isinstance(secret, KeyRing) else KeyRing.single(secret), device_id)
         self.power = P(self.state["power_state"])
         self.brightness = self.state["config"]["default_brightness"]
         self.animation: dict | None = None
         self.capture: dict | None = None
         self._seen: OrderedDict[str, list[dict]] = OrderedDict()
         self._out: list[dict] = []
+
+    # ---- keys / provisioning --------------------------------------------
+    def _set_keys(self, ring: KeyRing, device_id: str | None) -> None:
+        ring.on_change = self._persist
+        self.auth = Authenticator(ring, self.clock, device_id)
+        self.state["device_id"] = device_id
+
+    @property
+    def provisioned(self) -> bool:
+        return self.auth is not None
+
+    def provision(self, bundle: dict) -> None:
+        """One-time, physical-channel (USB) provisioning. Refuses to overwrite existing keys:
+        replacing them needs factory_reset(), a deliberate physical action."""
+        if self.auth is not None:
+            raise PermissionError("already provisioned; factory reset first")
+        if bundle.get("v") != 1 or bundle.get("kid") != 1:
+            raise ValueError("unsupported bundle")
+        key = bytes.fromhex(bundle["key"])
+        self._set_keys(KeyRing({1: key}, 1), bundle["device_id"])
+        self._persist()
+
+    def factory_reset(self) -> None:
+        self.state = json.loads(json.dumps(DEFAULT_STATE))
+        self.auth, self.power = None, P.AWAKE
+        self.storage.save(self.state)
 
     # ---- output -------------------------------------------------------
     def _emit(self, mtype: str, payload: dict) -> None:
@@ -131,6 +164,8 @@ class SimulatedDevice:
 
     # ---- persistence / state ------------------------------------------
     def _persist(self) -> None:
+        if self.auth is not None:
+            self.state["keys"] = self.auth.ring.to_dict()
         self.state["power_state"] = self.power.value
         self.storage.save(self.state)
 
@@ -242,9 +277,11 @@ class SimulatedDevice:
         return self._flush()
 
     # ---- inbound ------------------------------------------------------
-    def receive(self, raw: bytes | str) -> list[bytes]:
-        if self.power is P.SLEEPING:
-            return []  # radio off while sleeping; nothing can be received
+    def receive(self, raw: bytes | str, secure: bool = False) -> list[bytes]:
+        """secure=True means the frame arrived over a verified TLS session (set by the wss link)."""
+        if self.power is P.SLEEPING or self.auth is None:
+            return []  # radio off while sleeping; unprovisioned devices ignore everything
+        self._secure = secure
         try:
             msg = decode(raw)
             self.auth.verify(msg)  # authenticate before replying to anything
@@ -371,6 +408,18 @@ class SimulatedDevice:
         if self.power is P.CRITICAL_BATTERY:
             raise CommandFailure("unsafe", "critical battery")
         raise CommandFailure("invalid_state", f"already {self.power.value}")
+
+    def _cmd_security_rotate_key(self, mid: str, p: dict):
+        if not self._secure:
+            raise CommandFailure("not_allowed", "key rotation needs a TLS channel")
+        ring = self.auth.ring
+        if len(ring.kids()) != 1:
+            raise CommandFailure("invalid_state", "previous rotation not finished")
+        if p["kid"] != max(ring.kids()) + 1:
+            raise CommandFailure("invalid_state", "kid must be the next key id")
+        ring.add(p["kid"], bytes.fromhex(p["key"]))
+        ring.use_for_signing(p["kid"])  # old key stays valid until the host is seen using the new one
+        return {"kid": p["kid"]}
 
     def _cmd_device_get_status(self, mid: str, p: dict):
         return {"power_state": self.power.value, "battery_percent": self.battery,

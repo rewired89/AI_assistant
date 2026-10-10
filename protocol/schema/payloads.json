@@ -27,6 +27,9 @@
       "requested_by":{"enum":["user","system"]}}},
     "power.wake": {"type":"object","required":["reason"],"additionalProperties":false,"properties":{
       "reason":{"enum":["user_request","host_request"]}}},
+    "security.rotate_key": {"type":"object","required":["kid","key"],"additionalProperties":false,"properties":{
+      "kid":{"type":"integer","minimum":2,"maximum":1000000},
+      "key":{"type":"string","pattern":"^[0-9a-f]{64}$","description":"New 256-bit HMAC key, hex. Accepted only over a TLS channel."}}},
     "device.get_status": {"type":"object","additionalProperties":false,"properties":{}},
     "device.set_config": {"type":"object","required":["config"],"additionalProperties":false,"properties":{
       "config":{"type":"object","minProperties":1,"additionalProperties":false,"properties":{

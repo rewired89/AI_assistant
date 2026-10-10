@@ -46,8 +46,12 @@ class DeviceLink:
         ready.wait(5)
 
     def stop(self) -> None:
-        if self._loop and self._stop:
-            self._loop.call_soon_threadsafe(self._stop.set)
+        """Idempotent."""
+        if self._loop and self._stop and not self._loop.is_closed():
+            try:
+                self._loop.call_soon_threadsafe(self._stop.set)
+            except RuntimeError:
+                pass  # loop already finished
         if self._thread:
             self._thread.join(5)
 
@@ -103,7 +107,7 @@ class DeviceLink:
                 continue
             if isinstance(msg, bytes):
                 continue
-            for raw in self.device.receive(msg):
+            for raw in self.device.receive(msg, secure=True):
                 await ws.send(raw.decode())
             if self.device.power is PowerState.SLEEPING:
                 return

@@ -3,13 +3,13 @@ name = "nine-tails"
 version = "0.1.0"
 description = "Nine Tails: modular AI companion robot (host, protocol, simulator)"
 requires-python = ">=3.11"
-dependencies = ["jsonschema>=4.20", "pyyaml>=6.0", "websockets>=15"]
+dependencies = ["jsonschema>=4.20", "pyyaml>=6.0", "websockets>=15", "cryptography>=42"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "cryptography>=42"]
+dev = ["pytest>=8"]
 
 [tool.setuptools]
-packages = ["protocol", "companion", "companion.application", "companion.personality", "companion.scheduling", "simulator"]
+packages = ["protocol", "companion", "companion.application", "companion.personality", "companion.scheduling", "companion.security", "companion.memory", "companion.behavior", "companion.tamagotchi", "simulator", "tools"]
 
 [tool.setuptools.package-data]
 protocol = ["schema/*.json"]
