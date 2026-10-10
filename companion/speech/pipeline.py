@@ -17,7 +17,7 @@ from enum import Enum
 from typing import Callable, Protocol
 
 from protocol import audio as aud
-from protocol.schema_consts import VOICE_STYLES
+from protocol.schema_consts import ANIMATIONS, VOICE_STYLES
 
 from ..application.device_client import Capture, CommandRejected, CommandTimeout, DeviceClient, PlaybackJob
 from ..behavior import BehaviorEngine, to_commands
@@ -34,10 +34,15 @@ class State(Enum):
     SPEAKING = "speaking"
 
 
+ALLOWED_AFTER_SPEECH = frozenset({"power.sleep"})
+
+
 @dataclass
 class Reply:
     text: str
     style: str = "normal"
+    animation: str | None = None            # one-shot emotion shown after speaking (validated against the protocol enum)
+    after_speech: tuple = ()                # ((protocol_type, payload), ...) sent only after the speech finished
 
 
 class Responder(Protocol):
@@ -314,7 +319,7 @@ class VoicePipeline:
                 self.stats["reply_errors"] += 1
                 self._note(f"reply_error:{type(e).__name__}")
                 return self._start_speaking(self.lines["trouble_thinking"], "calm")
-            return self._start_speaking(reply.text[: self.cfg.max_reply_chars], reply.style)
+            return self._start_speaking(reply.text[: self.cfg.max_reply_chars], reply.style, reply)
         if self._timed_out(self.cfg.reply_timeout_s):
             self.stats["reply_timeouts"] += 1
             self._abort_all(keep_state=True)
@@ -326,13 +331,13 @@ class VoicePipeline:
         self._to_idle()
 
     # ---- SPEAKING -------------------------------------------------------------------
-    def _start_speaking(self, text: str, style: str) -> None:
+    def _start_speaking(self, text: str, style: str, reply: Reply | None = None) -> None:
         self._abort_all(keep_state=True)
         style = style if style in VOICE_STYLES else "normal"
         sentences = split_sentences(clean_reply(text), self.cfg.max_sentences, self.cfg.max_sentence_chars)
         if not sentences:
             return self._to_idle(animate=False)
-        self._speech = {"sentences": sentences, "i": 0, "style": style, "job": None,
+        self._speech = {"sentences": sentences, "i": 0, "style": style, "job": None, "reply": reply,
                         "tts": self._pool.submit(self.tts.synthesize, sentences[0], style), "next_tts": None}
         self._set(State.SPEAKING)
         self._animate("speaking_start", style=style)
@@ -373,9 +378,37 @@ class VoicePipeline:
             sp["i"] += 1
             sp["job"] = None
             if sp["i"] >= len(sp["sentences"]):
-                return self._to_idle()
+                reply = sp.get("reply")
+                self._to_idle()
+                if reply is not None:
+                    self._finish_reply(reply)
+                return
             sp["tts"], sp["next_tts"] = sp["next_tts"], None
             self._t_state = self.clock()
+
+    def _finish_reply(self, reply: Reply) -> None:
+        """Runs only after the speech played to the end (a barge-in drops these on purpose).
+        Host-validated, whitelisted requests; the device validates them again."""
+        if reply.animation in ANIMATIONS:
+            try:
+                self.client.request("animation.play", {"name": reply.animation, "loop": False, "priority": 5},
+                                    timeout_s=2.0, until="accepted")
+            except TransportClosed:
+                raise
+            except Exception:
+                self._note("emotion_failed")
+        for mtype, payload in reply.after_speech:
+            if mtype not in ALLOWED_AFTER_SPEECH:
+                self.stats["blocked_actions"] += 1
+                continue
+            try:
+                self.client.request(mtype, payload, timeout_s=5.0)
+                self.stats["actions_sent"] += 1
+            except TransportClosed:
+                raise
+            except Exception as e:
+                self.stats["action_errors"] += 1
+                self._note(f"action_failed:{type(e).__name__}")
 
     def _confused_idle(self) -> None:
         self._abort_all(keep_state=True)

@@ -12,10 +12,12 @@ Not implemented: encryption at rest (stdlib sqlite has none), embeddings (retrie
 """
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
 import sqlite3
+import threading
 import uuid
 from pathlib import Path
 from typing import Callable
@@ -75,7 +77,8 @@ class _Base(MemoryStoreABC):
 
     def __init__(self, path: Path | str, user_id: str, clock: Callable[[], float]):
         self.clock, self.user_id = clock, user_id
-        self.db = sqlite3.connect(str(path))
+        self._lock = threading.RLock()   # the voice pipeline calls memory from worker threads
+        self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA secure_delete=ON")
         self.db.executescript(_SCHEMA)
@@ -252,6 +255,19 @@ class _Base(MemoryStoreABC):
     def export(self) -> str:
         return json.dumps({"user_id": self.user_id, "exported_at": self.clock(), "settings": self.settings(),
                            "memories": self.list()}, indent=2, sort_keys=True)
+
+
+def _locked(fn):
+    @functools.wraps(fn)
+    def wrapper(self, *a, **k):
+        with self._lock:
+            return fn(self, *a, **k)
+    return wrapper
+
+
+for _name in ("set_enabled", "set_retention", "settings", "add", "confirm", "update", "delete", "clear",
+              "purge_expired", "list", "search", "export"):
+    setattr(_Base, _name, _locked(getattr(_Base, _name)))
 
 
 class MemoryStore(_Base):
