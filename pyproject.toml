@@ -1,0 +1,18 @@
+[project]
+name = "nine-tails"
+version = "0.1.0"
+description = "Nine Tails: modular AI companion robot (host, protocol, simulator)"
+requires-python = ">=3.11"
+dependencies = ["jsonschema>=4.20", "pyyaml>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["protocol", "companion", "companion.application", "companion.personality", "companion.scheduling", "simulator"]
+
+[tool.setuptools.package-data]
+protocol = ["schema/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

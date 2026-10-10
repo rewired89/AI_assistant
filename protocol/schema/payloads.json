@@ -1,0 +1,65 @@
+{
+  "$defs": {
+    "animation_name": {"enum": ["idle","happy","sad","angry","sleepy","excited","curious","confused","listening","thinking","talking","playing","eating","sleeping","waking","surprised","affectionate","reflective","calm","celebratory","offline"]},
+    "voice_style": {"enum": ["normal","happy","excited","sleepy","sad","surprised","affectionate","calm","whisper"]},
+    "ident": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+    "power_state": {"enum": ["AWAKE","IDLE","SLEEPING","WAKING","LOW_BATTERY","CRITICAL_BATTERY"]},
+    "error_code": {"enum": ["invalid_payload","unsupported_command","invalid_state","unsafe","not_allowed","busy","timeout","internal"]}
+  },
+  "commands": {
+    "animation.play": {"type":"object","required":["name"],"additionalProperties":false,"properties":{
+      "name":{"$ref":"#/$defs/animation_name"},"loop":{"type":"boolean"},"priority":{"type":"integer","minimum":0,"maximum":10}}},
+    "animation.stop": {"type":"object","additionalProperties":false,"properties":{}},
+    "display.set_expression": {"type":"object","required":["expression"],"additionalProperties":false,"properties":{
+      "expression":{"$ref":"#/$defs/animation_name"}}},
+    "display.set_brightness": {"type":"object","required":["level"],"additionalProperties":false,"properties":{
+      "level":{"type":"integer","minimum":0,"maximum":100}}},
+    "audio.play": {"type":"object","required":["stream_id","format"],"additionalProperties":false,"properties":{
+      "stream_id":{"$ref":"#/$defs/ident"},"format":{"enum":["pcm16_16k_mono","opus"]},
+      "style":{"$ref":"#/$defs/voice_style"},"volume":{"type":"integer","minimum":0,"maximum":100}}},
+    "audio.start_capture": {"type":"object","required":["capture_id","max_seconds"],"additionalProperties":false,"properties":{
+      "capture_id":{"$ref":"#/$defs/ident"},"max_seconds":{"type":"integer","minimum":1,"maximum":30}}},
+    "audio.stop_capture": {"type":"object","required":["capture_id"],"additionalProperties":false,"properties":{
+      "capture_id":{"$ref":"#/$defs/ident"}}},
+    "power.sleep": {"type":"object","required":["reason","requested_by"],"additionalProperties":false,"properties":{
+      "wake_at":{"type":["string","null"],"maxLength":40},
+      "reason":{"enum":["battery_saving","user_request","scheduled"]},
+      "requested_by":{"enum":["user","system"]}}},
+    "power.wake": {"type":"object","required":["reason"],"additionalProperties":false,"properties":{
+      "reason":{"enum":["user_request","host_request"]}}},
+    "device.get_status": {"type":"object","additionalProperties":false,"properties":{}},
+    "device.set_config": {"type":"object","required":["config"],"additionalProperties":false,"properties":{
+      "config":{"type":"object","minProperties":1,"additionalProperties":false,"properties":{
+        "volume":{"type":"integer","minimum":0,"maximum":100},
+        "default_brightness":{"type":"integer","minimum":0,"maximum":100},
+        "idle_sleep_seconds":{"type":"integer","minimum":30,"maximum":86400},
+        "mic_enabled":{"const":false,"description":"Host may only mute. Unmuting requires a physical action."}}}}}
+  },
+  "events": {
+    "device.ready": {"type":"object","required":["firmware_version","protocol_versions","boot_cause","recovered_state"],"additionalProperties":false,"properties":{
+      "firmware_version":{"type":"string","maxLength":32},"protocol_versions":{"type":"array","items":{"type":"integer"},"minItems":1},
+      "boot_cause":{"enum":["power_on","timer","button","reset"]},"recovered_state":{"type":"boolean"}}},
+    "button.pressed": {"type":"object","required":["button","kind"],"additionalProperties":false,"properties":{
+      "button":{"$ref":"#/$defs/ident"},"kind":{"enum":["single","double","long"]}}},
+    "touch.detected": {"type":"object","required":["zone"],"additionalProperties":false,"properties":{"zone":{"$ref":"#/$defs/ident"}}},
+    "battery.updated": {"type":"object","required":["percent","power_state","warning"],"additionalProperties":false,"properties":{
+      "percent":{"type":"integer","minimum":0,"maximum":100},"power_state":{"$ref":"#/$defs/power_state"},"warning":{"type":"boolean"}}},
+    "audio.capture.started": {"type":"object","required":["capture_id"],"additionalProperties":false,"properties":{"capture_id":{"$ref":"#/$defs/ident"}}},
+    "audio.capture.chunk": {"type":"object","required":["capture_id","seq","size"],"additionalProperties":false,"properties":{
+      "capture_id":{"$ref":"#/$defs/ident"},"seq":{"type":"integer","minimum":0},"size":{"type":"integer","minimum":0,"maximum":8192}}},
+    "audio.capture.stopped": {"type":"object","required":["capture_id","reason"],"additionalProperties":false,"properties":{
+      "capture_id":{"$ref":"#/$defs/ident"},"reason":{"enum":["host_request","timeout","low_battery","muted"]}}},
+    "animation.finished": {"type":"object","required":["name","interrupted"],"additionalProperties":false,"properties":{
+      "name":{"$ref":"#/$defs/animation_name"},"interrupted":{"type":"boolean"}}},
+    "power.sleeping": {"type":"object","required":["reason","wake_at"],"additionalProperties":false,"properties":{
+      "reason":{"enum":["battery_saving","user_request","scheduled","idle","critical_battery"]},"wake_at":{"type":["string","null"]}}},
+    "power.waking": {"type":"object","required":["cause"],"additionalProperties":false,"properties":{"cause":{"enum":["scheduled","button","host_request","reset"]}}},
+    "power.woke": {"type":"object","required":["cause"],"additionalProperties":false,"properties":{"cause":{"enum":["scheduled","button","host_request","reset"]}}},
+    "command.accepted": {"type":"object","required":["command_id","command_type"],"additionalProperties":false,"properties":{
+      "command_id":{"type":"string"},"command_type":{"type":"string"}}},
+    "command.completed": {"type":"object","required":["command_id"],"additionalProperties":false,"properties":{
+      "command_id":{"type":"string"},"result":{"type":"object"}}},
+    "command.failed": {"type":"object","required":["command_id","code","message"],"additionalProperties":false,"properties":{
+      "command_id":{"type":"string"},"code":{"$ref":"#/$defs/error_code"},"message":{"type":"string","maxLength":200}}}
+  }
+}

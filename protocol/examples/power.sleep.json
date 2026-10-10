@@ -1,0 +1,2 @@
+{"protocol_version": 1, "message_id": "example-0001", "type": "power.sleep",
+ "payload": {"wake_at": "2026-10-10T20:00:00-04:00", "reason": "battery_saving", "requested_by": "user"}}

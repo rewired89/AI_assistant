@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nine-tails/envelope/v1",
+  "type": "object",
+  "required": ["protocol_version", "message_id", "type", "payload", "auth"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {"type": "integer", "minimum": 1},
+    "message_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}$"},
+    "type": {"type": "string", "pattern": "^[a-z_]+(\\.[a-z_]+){1,2}$"},
+    "payload": {"type": "object"},
+    "auth": {
+      "type": "object",
+      "required": ["nonce", "ts", "mac"],
+      "additionalProperties": false,
+      "properties": {
+        "nonce": {"type": "string", "pattern": "^[0-9a-f]{16,32}$"},
+        "ts": {"type": "integer", "minimum": 0},
+        "mac": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

@@ -1,0 +1,2 @@
+{"protocol_version": 1, "message_id": "example-0002", "type": "animation.play",
+ "payload": {"name": "happy", "loop": false}}
