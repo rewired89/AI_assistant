@@ -2,6 +2,7 @@
   "$defs": {
     "animation_name": {"enum": ["idle","happy","sad","angry","sleepy","excited","curious","confused","listening","thinking","talking","playing","eating","sleeping","waking","surprised","affectionate","reflective","calm","celebratory","offline"]},
     "voice_style": {"enum": ["normal","happy","excited","sleepy","sad","surprised","affectionate","calm","whisper"]},
+    "stream_no": {"type": "integer", "minimum": 1, "maximum": 65535},
     "ident": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
     "power_state": {"enum": ["AWAKE","IDLE","SLEEPING","WAKING","LOW_BATTERY","CRITICAL_BATTERY"]},
     "error_code": {"enum": ["invalid_payload","unsupported_command","invalid_state","unsafe","not_allowed","busy","timeout","internal"]}
@@ -14,11 +15,13 @@
       "expression":{"$ref":"#/$defs/animation_name"}}},
     "display.set_brightness": {"type":"object","required":["level"],"additionalProperties":false,"properties":{
       "level":{"type":"integer","minimum":0,"maximum":100}}},
-    "audio.play": {"type":"object","required":["stream_id","format"],"additionalProperties":false,"properties":{
-      "stream_id":{"$ref":"#/$defs/ident"},"format":{"enum":["pcm16_16k_mono","opus"]},
+    "audio.play": {"type":"object","required":["stream_id","stream_no","format"],"additionalProperties":false,"properties":{
+      "stream_id":{"$ref":"#/$defs/ident"},"stream_no":{"$ref":"#/$defs/stream_no"},"format":{"enum":["pcm16_16k_mono","opus"]},
       "style":{"$ref":"#/$defs/voice_style"},"volume":{"type":"integer","minimum":0,"maximum":100}}},
-    "audio.start_capture": {"type":"object","required":["capture_id","max_seconds"],"additionalProperties":false,"properties":{
-      "capture_id":{"$ref":"#/$defs/ident"},"max_seconds":{"type":"integer","minimum":1,"maximum":30}}},
+    "audio.start_capture": {"type":"object","required":["capture_id","stream_no","max_seconds"],"additionalProperties":false,"properties":{
+      "capture_id":{"$ref":"#/$defs/ident"},"stream_no":{"$ref":"#/$defs/stream_no"},"max_seconds":{"type":"integer","minimum":1,"maximum":30}}},
+    "audio.stop_playback": {"type":"object","required":["stream_id"],"additionalProperties":false,"properties":{
+      "stream_id":{"$ref":"#/$defs/ident"}}},
     "audio.stop_capture": {"type":"object","required":["capture_id"],"additionalProperties":false,"properties":{
       "capture_id":{"$ref":"#/$defs/ident"}}},
     "power.sleep": {"type":"object","required":["reason","requested_by"],"additionalProperties":false,"properties":{
@@ -50,6 +53,9 @@
     "audio.capture.started": {"type":"object","required":["capture_id"],"additionalProperties":false,"properties":{"capture_id":{"$ref":"#/$defs/ident"}}},
     "audio.capture.chunk": {"type":"object","required":["capture_id","seq","size"],"additionalProperties":false,"properties":{
       "capture_id":{"$ref":"#/$defs/ident"},"seq":{"type":"integer","minimum":0},"size":{"type":"integer","minimum":0,"maximum":8192}}},
+    "audio.playback.finished": {"type":"object","required":["stream_id","result","bytes_played","underruns"],"additionalProperties":false,"properties":{
+      "stream_id":{"$ref":"#/$defs/ident"},"result":{"enum":["completed","interrupted","error"]},
+      "bytes_played":{"type":"integer","minimum":0},"underruns":{"type":"integer","minimum":0}}},
     "audio.capture.stopped": {"type":"object","required":["capture_id","reason"],"additionalProperties":false,"properties":{
       "capture_id":{"$ref":"#/$defs/ident"},"reason":{"enum":["host_request","timeout","low_battery","muted"]}}},
     "animation.finished": {"type":"object","required":["name","interrupted"],"additionalProperties":false,"properties":{

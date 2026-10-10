@@ -69,16 +69,16 @@ def test_unsupported_version_and_unknown_command(device, clock):
 
 
 def test_set_config_validation_and_mute(client, device):
-    client.request("audio.start_capture", {"capture_id": "c1", "max_seconds": 5})
+    client.request("audio.start_capture", {"capture_id": "c1", "stream_no": 1, "max_seconds": 5})
     client.request("device.set_config", {"config": {"mic_enabled": False}})
     assert device.capture is None
     with pytest.raises(CommandRejected) as e:
-        client.request("audio.start_capture", {"capture_id": "c2", "max_seconds": 5})
+        client.request("audio.start_capture", {"capture_id": "c2", "stream_no": 2, "max_seconds": 5})
     assert e.value.code == "not_allowed"
 
 
 def test_capture_times_out_on_device(client, device, clock):
-    client.request("audio.start_capture", {"capture_id": "c1", "max_seconds": 3})
+    client.request("audio.start_capture", {"capture_id": "c1", "stream_no": 1, "max_seconds": 3})
     clock.advance(4); client.pump()
     assert any(e["type"] == "audio.capture.stopped" and e["payload"]["reason"] == "timeout" for e in client.events)
 

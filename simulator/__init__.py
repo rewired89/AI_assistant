@@ -1,3 +1,3 @@
-from .device import PowerState, SimulatedDevice, Storage, Thresholds, InvalidTransition
+from .device import BinaryFrame, PowerState, SimulatedDevice, Storage, Thresholds, InvalidTransition
 
-__all__ = ["PowerState", "SimulatedDevice", "Storage", "Thresholds", "InvalidTransition"]
+__all__ = ["BinaryFrame", "PowerState", "SimulatedDevice", "Storage", "Thresholds", "InvalidTransition"]

@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from typing import Iterator
 
 from protocol import Authenticator, ProtocolError, build, check_version, decode, encode, validate_payload
+from protocol import audio as aud
+import uuid
 
 from ..interfaces import Clock, DeviceTransport
 
@@ -29,12 +31,38 @@ class Outcome:
 
 
 @dataclass
+class Capture:
+    """Host view of one microphone capture. PCM arrives as binary frames; `done` means the END frame was seen."""
+    capture_id: str
+    stream_no: int
+    max_bytes: int
+    chunks: list[bytes] = field(default_factory=list)
+    next_seq: int = 0
+    done: bool = False
+    corrupt: bool = False
+    stop_reason: str | None = None
+
+    @property
+    def pcm(self) -> bytes:
+        return b"".join(self.chunks)
+
+    @property
+    def seconds(self) -> float:
+        return aud.pcm_seconds(sum(len(c) for c in self.chunks))
+
+
+@dataclass
 class DeviceClient:
     transport: DeviceTransport
     auth: Authenticator
     clock: Clock
     events: list[dict] = field(default_factory=list)
     _pending: dict[str, Outcome] = field(default_factory=dict)
+    captures: dict[int, Capture] = field(default_factory=dict)
+    playback_results: dict[str, dict] = field(default_factory=dict)
+    audio_dropped: int = 0
+    _stream_counter: int = 0
+    _active_playback: set = field(default_factory=set)
 
     def send(self, mtype: str, payload: dict | None = None) -> Outcome:
         msg = build(mtype, payload)
@@ -53,6 +81,108 @@ class DeviceClient:
             except ProtocolError:
                 continue  # drop anything unauthenticated or malformed
             self._apply(msg)
+        for raw in self.transport.receive_binary():
+            self._on_audio(raw)
+
+    def _on_audio(self, raw: bytes) -> None:
+        try:
+            f = aud.unpack(raw)
+        except aud.AudioFrameError:
+            self.audio_dropped += 1
+            return
+        cap = self.captures.get(f.stream_no)
+        if f.kind != aud.KIND_CAPTURE or cap is None or cap.done or f.codec != aud.CODEC_PCM16:
+            self.audio_dropped += 1  # unknown or finished stream: never accept audio nobody asked for
+            return
+        if f.seq != cap.next_seq or sum(len(c) for c in cap.chunks) + len(f.payload) > cap.max_bytes:
+            cap.corrupt = True
+            self.audio_dropped += 1
+            return
+        cap.next_seq += 1
+        if f.payload:
+            cap.chunks.append(f.payload)
+        cap.done = f.end
+
+    def _alloc_stream(self) -> int:
+        busy = {n for n, c in self.captures.items() if not c.done} | self._active_playback
+        for _ in range(65535):
+            self._stream_counter = self._stream_counter % 65535 + 1
+            if self._stream_counter not in busy:
+                return self._stream_counter
+        raise RuntimeError("no free stream numbers")
+
+    # ---- audio: capture -----------------------------------------------------------
+    def start_capture(self, max_seconds: int = 10, timeout_s: float = 5.0) -> Capture:
+        cap = Capture(uuid.uuid4().hex[:12], self._alloc_stream(), max_seconds * aud.BYTES_PER_SECOND)
+        self.captures[cap.stream_no] = cap
+        try:
+            self.request("audio.start_capture", {"capture_id": cap.capture_id, "stream_no": cap.stream_no,
+                                                 "max_seconds": max_seconds}, timeout_s=timeout_s)
+        except BaseException:
+            self.captures.pop(cap.stream_no, None)
+            raise
+        return cap
+
+    def wait_capture(self, cap: Capture, timeout_s: float = 35.0) -> Capture:
+        deadline = self.clock.now() + timeout_s
+        while not cap.done:
+            self.pump()
+            if cap.done:
+                break
+            if self.clock.now() >= deadline:
+                raise CommandTimeout("capture did not finish")
+            self.clock.sleep(0.02)
+        return cap
+
+    def stop_capture(self, cap: Capture, timeout_s: float = 5.0) -> Capture:
+        self.request("audio.stop_capture", {"capture_id": cap.capture_id}, timeout_s=timeout_s)
+        return self.wait_capture(cap, timeout_s)
+
+    # ---- audio: playback ------------------------------------------------------------
+    def play_pcm(self, pcm: bytes, style: str = "normal", volume: int | None = None, prebuffer_s: float = 0.5,
+                 timeout_s: float | None = None) -> Outcome:
+        """Stream PCM16/16k/mono to the speaker: send `prebuffer_s` of audio at once, then keep the
+        lead at that size by pacing at exactly real time (the device drains at its sample clock, and
+        its buffer holds ~2 s, so running faster than real time would overrun it). Returns when the
+        device reports playback complete, not when the last byte was sent."""
+        if len(pcm) % 2:
+            raise ValueError("PCM16 data must have an even number of bytes")
+        if not 0.1 <= prebuffer_s <= 1.5:
+            raise ValueError("prebuffer_s must be between 0.1 and 1.5 s (device buffer is ~2 s)")
+        stream_id, stream_no = "s" + uuid.uuid4().hex[:10], self._alloc_stream()
+        payload = {"stream_id": stream_id, "stream_no": stream_no, "format": "pcm16_16k_mono", "style": style}
+        if volume is not None:
+            payload["volume"] = volume
+        out = self.send("audio.play", payload)
+        self._active_playback.add(stream_no)
+        t0 = self.clock.now()
+        limit = timeout_s if timeout_s is not None else aud.pcm_seconds(len(pcm)) + 10
+        sent = seq = 0
+        end_sent = False
+        try:
+            while True:
+                self.pump()
+                if out.failed:
+                    raise CommandRejected(*out.failed)
+                if out.completed:
+                    return out
+                if self.clock.now() - t0 > limit:
+                    raise CommandTimeout("playback did not complete")
+                if out.accepted:
+                    allowed = (prebuffer_s + (self.clock.now() - t0)) * aud.BYTES_PER_SECOND
+                    while sent < len(pcm) and sent <= allowed:
+                        chunk = pcm[sent:sent + aud.CHUNK_BYTES]
+                        self.transport.send_binary(aud.pack(aud.KIND_PLAYBACK, stream_no, seq, chunk))
+                        sent, seq = sent + len(chunk), seq + 1
+                    if sent >= len(pcm) and not end_sent:
+                        self.transport.send_binary(aud.pack(aud.KIND_PLAYBACK, stream_no, seq, b"", end=True))
+                        end_sent = True
+                self.clock.sleep(0.02)
+        finally:
+            self._active_playback.discard(stream_no)
+
+    def stop_playback(self, stream_id: str, timeout_s: float = 5.0) -> Outcome:
+        return self.request("audio.stop_playback", {"stream_id": stream_id}, timeout_s=timeout_s)
 
     def _apply(self, msg: dict) -> None:
         p, t = msg["payload"], msg["type"]
@@ -64,6 +194,12 @@ class DeviceClient:
         elif t == "command.failed" and out:
             out.failed = (p["code"], p["message"])
         else:
+            if t == "audio.capture.stopped":
+                for cap in self.captures.values():
+                    if cap.capture_id == p["capture_id"]:
+                        cap.stop_reason = p["reason"]
+            elif t == "audio.playback.finished":
+                self.playback_results[p["stream_id"]] = p
             self.events.append(msg)
 
     def request(self, mtype: str, payload: dict | None = None, timeout_s: float = 5.0,
@@ -97,13 +233,26 @@ def backoff_delays(base: float = 1.0, cap: float = 30.0, jitter: float = 0.2,
 class LoopbackTransport(DeviceTransport):
     """Connects a DeviceClient directly to a SimulatedDevice in-process."""
 
-    def __init__(self, device):
-        self.device, self._inbox = device, []
+    def __init__(self, device, secure: bool = False):
+        """secure mimics a TLS session: keys rotation and binary audio are only honored when True."""
+        self.device, self.secure, self._inbox, self._binbox = device, secure, [], []
+
+    def _take(self, outputs) -> None:
+        from simulator.device import BinaryFrame
+        for o in outputs:
+            (self._binbox if isinstance(o, BinaryFrame) else self._inbox).append(bytes(o))
 
     def send(self, raw: bytes) -> None:
-        self._inbox.extend(self.device.receive(raw))
+        self._take(self.device.receive(raw, secure=self.secure))
+
+    def send_binary(self, raw: bytes) -> None:
+        self._take(self.device.receive_binary(raw, secure=self.secure))
 
     def receive(self) -> list[bytes]:
-        self._inbox.extend(self.device.tick())  # device runs on its own clock
+        self._take(self.device.tick())  # device runs on its own clock
         out, self._inbox = self._inbox, []
+        return out
+
+    def receive_binary(self) -> list[bytes]:
+        out, self._binbox = self._binbox, []
         return out

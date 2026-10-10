@@ -14,11 +14,23 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable
 
+from protocol import audio as aud
 from protocol import (Authenticator, KeyRing, ProtocolError, SUPPORTED_VERSIONS, build, check_version,
                       decode, encode, validate_payload)
 
 FIRMWARE_VERSION = "sim-0.1"
 MAX_SLEEP_DAYS = 30
+
+
+class BinaryFrame(bytes):
+    """Outbound binary audio frame. Travels in the same ordered output list as JSON messages so
+    ordering between events and audio is preserved on the wire."""
+
+
+PLAY_PREBUFFER_BYTES = 4800        # 150 ms before playback starts or resumes
+MAX_PLAY_BUFFER = 64 * 1024        # ~2 s of PCM the device can hold; more means the host overran it
+MAX_PLAY_BYTES = 30 * aud.BYTES_PER_SECOND
+PLAY_IDLE_TIMEOUT_S = 5.0
 
 
 class PowerState(str, Enum):
@@ -123,6 +135,8 @@ class SimulatedDevice:
         self.brightness = self.state["config"]["default_brightness"]
         self.animation: dict | None = None
         self.capture: dict | None = None
+        self.playback: dict | None = None
+        self.audio_rejected = 0
         self._seen: OrderedDict[str, list[dict]] = OrderedDict()
         self._out: list[dict] = []
 
@@ -160,7 +174,7 @@ class SimulatedDevice:
 
     def _flush(self) -> list[bytes]:
         out, self._out = self._out, []
-        return [encode(m) for m in out]
+        return [m if isinstance(m, BinaryFrame) else encode(m) for m in out]
 
     # ---- persistence / state ------------------------------------------
     def _persist(self) -> None:
@@ -274,6 +288,7 @@ class SimulatedDevice:
             self._finish_animation(interrupted=False)
         if self.capture and now >= self.capture["ends"]:
             self._stop_capture("timeout")
+        self._advance_playback(now)
         return self._flush()
 
     # ---- inbound ------------------------------------------------------
@@ -299,14 +314,15 @@ class SimulatedDevice:
             return self._flush()
         start = len(self._out)
         self._handle(msg)
-        self._seen[mid] = [{"type": self._out[i]["type"], "payload": self._out[i]["payload"]}
-                           for i in range(start, len(self._out))
-                           if self._out[i]["type"].startswith("command.")]
+        self._seen[mid] = [{"type": m["type"], "payload": m["payload"]}
+                           for m in self._out[start:]
+                           if isinstance(m, dict) and m["type"].startswith("command.")]
         while len(self._seen) > 256:
             self._seen.popitem(last=False)
         return self._flush()
 
     def _handle(self, msg: dict) -> None:
+        self._advance_playback(self.clock())  # commands must see playback progress as of now
         mid, mtype = msg["message_id"], msg["type"]
         try:
             validate_payload(msg, "command")
@@ -354,8 +370,106 @@ class SimulatedDevice:
             raise CommandFailure("unsafe", f"brightness capped at {cap} on low battery")
         self.brightness = p["level"]
 
+    # ---- audio ----------------------------------------------------------
     def _cmd_audio_play(self, mid: str, p: dict):
-        return {"stream_id": p["stream_id"], "note": "sim: playback not modeled"}
+        if p["format"] != "pcm16_16k_mono":
+            raise CommandFailure("unsupported_command", "only pcm16_16k_mono is supported in this firmware")
+        if self.playback:
+            raise CommandFailure("busy", "playback already active")
+        self.playback = {"id": p["stream_id"], "stream_no": p["stream_no"], "cmd": mid, "next_seq": 0,
+                         "received": 0, "consumed": 0, "ended": False, "playing": False, "stalled": False,
+                         "underruns": 0, "last_t": self.clock(), "last_rx": self.clock(),
+                         "style": p.get("style", "normal"), "volume": p.get("volume")}
+        return False  # completion is audio.playback.finished + command.completed, after the audio has played
+
+    def _cmd_audio_stop_playback(self, mid: str, p: dict):
+        if not self.playback or self.playback["id"] != p["stream_id"]:
+            raise CommandFailure("invalid_state", "no such active playback")
+        self._finish_playback("interrupted")
+
+    def _finish_playback(self, result: str, fail: tuple[str, str] | None = None) -> None:
+        pl, self.playback = self.playback, None
+        self._emit("audio.playback.finished", {"stream_id": pl["id"], "result": result,
+                                               "bytes_played": int(pl["consumed"]), "underruns": pl["underruns"]})
+        if fail:
+            self._emit("command.failed", {"command_id": pl["cmd"], "code": fail[0], "message": fail[1]})
+        else:
+            self._emit("command.completed", {"command_id": pl["cmd"]})
+
+    def _advance_playback(self, now: float) -> None:
+        pl = self.playback
+        if pl is None:
+            return
+        dt, pl["last_t"] = max(0.0, now - pl["last_t"]), now
+        if pl["playing"]:
+            want = dt * aud.BYTES_PER_SECOND
+            have = pl["received"] - pl["consumed"]
+            take = min(want, have)
+            pl["consumed"] += take
+            if take < want and not pl["ended"]:  # ran dry: audible glitch, rebuffer before resuming
+                pl["underruns"] += 1
+                pl["playing"], pl["stalled"] = False, True
+        if pl["ended"] and pl["consumed"] >= pl["received"] - 1e-6:
+            self._finish_playback("completed")
+        elif not pl["ended"] and now - pl["last_rx"] > PLAY_IDLE_TIMEOUT_S:
+            self._finish_playback("error", ("timeout", "no audio data from host"))
+
+    def receive_binary(self, frame: bytes, secure: bool = False) -> list[bytes]:
+        """Host -> device audio. Accepted only on a TLS session, for the one stream the host opened
+        with a signed audio.play, strictly in sequence. Anything else is dropped and counted."""
+        if self.power is P.SLEEPING or self.auth is None:
+            return []
+        pl = self.playback
+        try:
+            if not secure:
+                raise aud.AudioFrameError("binary audio needs a TLS channel")
+            f = aud.unpack(frame)
+            if f.kind != aud.KIND_PLAYBACK or f.codec != aud.CODEC_PCM16:
+                raise aud.AudioFrameError("unexpected kind/codec")
+            if pl is None or pl["stream_no"] != f.stream_no or pl["ended"]:
+                raise aud.AudioFrameError("no such open stream")
+        except aud.AudioFrameError:
+            self.audio_rejected += 1
+            return self._flush()
+        now = self.clock()
+        self._advance_playback(now)
+        if self.playback is None:  # finished or timed out while we were catching up
+            self.audio_rejected += 1
+            return self._flush()
+        if f.seq != pl["next_seq"]:
+            self._finish_playback("error", ("invalid_state", "audio sequence gap"))
+            return self._flush()
+        pl["next_seq"] += 1
+        pl["received"] += len(f.payload)
+        pl["last_rx"] = now
+        if pl["received"] - pl["consumed"] > MAX_PLAY_BUFFER or pl["received"] > MAX_PLAY_BYTES:
+            self._finish_playback("error", ("busy", "audio buffer overrun"))
+            return self._flush()
+        if f.end:
+            pl["ended"] = True
+        if not pl["playing"] and (pl["received"] - pl["consumed"] >= PLAY_PREBUFFER_BYTES or pl["ended"]):
+            pl["playing"], pl["stalled"], pl["last_t"] = True, False, now
+        if pl["ended"] and pl["received"] == 0:
+            self._finish_playback("completed")
+        return self._flush()
+
+    def feed_mic(self, pcm: bytes) -> bool:
+        """Test/sim hook standing in for the I2S microphone. Returns False when the mic is closed."""
+        cap = self.capture
+        if cap is None:
+            return False
+        room = cap["max_bytes"] - cap["sent"] - len(cap["rem"])
+        data = cap["rem"] + pcm[:max(0, room)]
+        cap["rem"] = b""
+        while len(data) >= aud.CHUNK_BYTES:
+            self._out.append(BinaryFrame(aud.pack(aud.KIND_CAPTURE, cap["stream_no"], cap["seq"], data[:aud.CHUNK_BYTES])))
+            cap["seq"] += 1
+            cap["sent"] += aud.CHUNK_BYTES
+            data = data[aud.CHUNK_BYTES:]
+        cap["rem"] = data
+        if len(pcm) > room:
+            self._stop_capture("timeout")
+        return True
 
     def _cmd_audio_start_capture(self, mid: str, p: dict):
         if not self.state["config"]["mic_enabled"]:
@@ -364,12 +478,15 @@ class SimulatedDevice:
             raise CommandFailure("unsafe", "capture disabled on low battery")
         if self.capture:
             raise CommandFailure("busy", "capture already active")
-        self.capture = {"id": p["capture_id"], "ends": self.clock() + p["max_seconds"]}
+        self.capture = {"id": p["capture_id"], "stream_no": p["stream_no"], "ends": self.clock() + p["max_seconds"],
+                        "seq": 0, "rem": b"", "sent": 0, "max_bytes": p["max_seconds"] * aud.BYTES_PER_SECOND}
         self._emit("audio.capture.started", {"capture_id": p["capture_id"]})
 
     def _stop_capture(self, reason: str) -> None:
-        cid, self.capture = self.capture["id"], None
-        self._emit("audio.capture.stopped", {"capture_id": cid, "reason": reason})
+        cap, self.capture = self.capture, None
+        tail = cap["rem"][: len(cap["rem"]) // 2 * 2]
+        self._out.append(BinaryFrame(aud.pack(aud.KIND_CAPTURE, cap["stream_no"], cap["seq"], tail, end=True)))
+        self._emit("audio.capture.stopped", {"capture_id": cap["id"], "reason": reason})
 
     def _cmd_audio_stop_capture(self, mid: str, p: dict):
         if not self.capture or self.capture["id"] != p["capture_id"]:
@@ -400,6 +517,8 @@ class SimulatedDevice:
             self._finish_animation(interrupted=True)
         if self.capture:
             self._stop_capture("low_battery")
+        if self.playback:
+            self._finish_playback("interrupted")
         self.state["wake_at"], self.state["sleep_reason"] = wake_at, reason
         self._go(P.SLEEPING)
         self._emit("power.sleeping", {"reason": reason, "wake_at": wake_at})
@@ -424,7 +543,7 @@ class SimulatedDevice:
     def _cmd_device_get_status(self, mid: str, p: dict):
         return {"power_state": self.power.value, "battery_percent": self.battery,
                 "brightness": self.brightness, "config": dict(self.state["config"]),
-                "wake_at": self.state.get("wake_at"), "capture_active": bool(self.capture),
+                "wake_at": self.state.get("wake_at"), "capture_active": bool(self.capture), "playback_active": bool(self.playback),
                 "animation": self.animation["name"] if self.animation else None,
                 "firmware_version": FIRMWARE_VERSION}
 

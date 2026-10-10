@@ -20,6 +20,7 @@
 | `companion/storage.py` | `ChecksumJSON` atomic checksummed JSON (used by onboarding; older stores have their own copies) |
 | `companion/application/onboarding.py` | `Onboarding` flow: core questions, paced optional steps, answer parsing, effects, device sync; `load_copy`, `parse_name` |
 | `companion/application/onboarding_default.yaml`, `species/*/onboarding.yaml` | Scripted copy + option keywords (species deep-merges over default) |
+| `protocol/audio.py` | Binary audio frame `pack`/`unpack` (strict), constants, `pcm_seconds` |
 | `protocol/keys.py` | `KeyRing` (kid->key, signing kid, adopt/retire rules, no key in repr) |
 | `companion/security/secrets.py` | `SecretStore`: per-device keys, bundle creation, revoke, begin_rotation, `mac_gate`; 0600 + optional scrypt/Fernet |
 | `companion/security/rotation.py` | `rotate_device_key` (resume-safe) |
@@ -28,6 +29,7 @@
 | `companion/application/clock.py` | `SystemClock` |
 | `simulator/ws_link.py` | `DeviceLink`: simulated device dials host over wss, reconnect/backoff, offline ticking, sleep closes socket |
 | `tools/gen_certs.py` | Private CA + server cert generator (ECDSA P-256), cross-platform |
+| `tests/protocol/test_audio_frames.py`, `tests/firmware/test_audio_sim.py`, `tests/integration/test_wss_audio.py` | Frame format + fuzz; sim capture/playback rules; audio over real TLS |
 | `tests/integration/test_wss.py` | Real TLS loopback tests: roundtrip, wrong CA/host, pre-auth, flood, reconnect, sleep/wake |
 | `species/<name>/personality.yaml` | Character configs (ninetales, cubone) |
 | `species/ninetales/growth.yaml` | Needs rates, event effects, daily caps, stage requirements |

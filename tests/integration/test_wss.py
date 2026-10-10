@@ -187,15 +187,13 @@ def test_oversize_frame_closes_connection(host, make_link, pki):
     assert asyncio.run(_raw(host, pki, fn)) == 1009
 
 
-def test_binary_frames_rejected(host, pki):
-    ok = Authenticator(SECRET, CLOCK).sign(build("battery.updated", {"percent": 5, "power_state": "AWAKE", "warning": True}))
-
+def test_binary_frame_before_auth_is_rejected(host, pki):
     async def fn(ws):
-        await ws.send(encode(ok).decode())
-        await ws.send(b"\x00\x01")
+        await ws.send(b"\x01\x02\x03")
         await asyncio.wait_for(ws.wait_closed(), 3)
         return ws.close_code
-    assert asyncio.run(_raw(host, pki, fn)) == 1003
+    assert asyncio.run(_raw(host, pki, fn)) == 4003
+    assert host.stats["preauth_rejected"] == 1 and host.receive_binary() == []
 
 
 def test_flood_is_rate_limited(host, pki):

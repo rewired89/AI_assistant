@@ -4,9 +4,10 @@ Why the device dials out: it works behind home NAT/DHCP and the host needs no de
 Layers: TLS (confidentiality, server identity via pinned CA) -> WebSocket text frames (one JSON
 protocol message each) -> HMAC (message authenticity, in protocol/). This class is a dumb pipe plus
 connection hygiene; it never interprets commands.
-Hygiene: pre-auth gate (first frame must pass a MAC check within a timeout), one device at a time
-(only an *authenticated* newcomer replaces the old connection), 16 KiB frames, text only,
-token-bucket rate limit, keepalive pings. No event buffering: messages sent while disconnected raise
+Binary frames (protocol/audio.py) share the connection: <= 4108 bytes each, their own byte-rate limit and a bounded queue.
+Hygiene: pre-auth gate (first frame must be a signed text frame passing a MAC check within a timeout; binary before that is rejected), one device at a time
+(only an *authenticated* newcomer replaces the old connection), 16 KiB control frames,
+token-bucket rate limits, keepalive pings. No event buffering: messages sent while disconnected raise
 TransportClosed and device events produced while offline are lost.
 """
 from __future__ import annotations
@@ -23,6 +24,7 @@ from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
 
 from protocol import MAX_MESSAGE_BYTES
+from protocol.audio import HEADER_SIZE, MAX_PAYLOAD
 
 from ..interfaces import DeviceTransport, TransportClosed
 
@@ -31,12 +33,12 @@ class TokenBucket:
     def __init__(self, rate_per_s: float, burst: int):
         self.rate, self.cap, self.tokens, self.t = rate_per_s, burst, float(burst), time.monotonic()
 
-    def allow(self) -> bool:
+    def allow(self, cost: float = 1) -> bool:
         now = time.monotonic()
         self.tokens = min(self.cap, self.tokens + (now - self.t) * self.rate)
         self.t = now
-        if self.tokens >= 1:
-            self.tokens -= 1
+        if self.tokens >= cost:
+            self.tokens -= cost
             return True
         return False
 
@@ -61,13 +63,19 @@ def client_ssl_context(ca_cert: str) -> ssl.SSLContext:
 class WebSocketHostTransport(DeviceTransport):
     def __init__(self, ssl_context: ssl.SSLContext, host: str = "127.0.0.1", port: int = 0,
                  pre_auth_check: Callable[[str], bool] | None = None, pre_auth_timeout_s: float = 10.0,
-                 rate_per_s: float = 50, burst: int = 100, ping_interval_s: float = 20, ping_timeout_s: float = 20):
+                 rate_per_s: float = 50, burst: int = 100, ping_interval_s: float = 20, ping_timeout_s: float = 20,
+                 audio_bytes_per_s: float = 96 * 1024, audio_burst_bytes: int = 192 * 1024,
+                 max_queued_audio_bytes: int = 1024 * 1024):
         self._ssl, self._host, self.port = ssl_context, host, port
         self._check = pre_auth_check
         self._pre_auth_timeout = pre_auth_timeout_s
         self._rate, self._burst = rate_per_s, burst
         self._ping = (ping_interval_s, ping_timeout_s)
         self._inbox: queue.SimpleQueue[bytes] = queue.SimpleQueue()
+        self._binbox: queue.SimpleQueue[bytes] = queue.SimpleQueue()
+        self._audio_rate, self._audio_burst, self._max_audio_q = audio_bytes_per_s, audio_burst_bytes, max_queued_audio_bytes
+        self._audio_q_bytes = 0
+        self._audio_lock = threading.Lock()
         self._ws = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
@@ -123,6 +131,29 @@ class WebSocketHostTransport(DeviceTransport):
         except (ConnectionClosed, TimeoutError, Exception) as e:
             raise TransportClosed(str(e)) from None
 
+    def send_binary(self, raw: bytes) -> None:
+        ws, loop = self._ws, self._loop
+        if ws is None or loop is None:
+            raise TransportClosed("device not connected")
+        if len(raw) > HEADER_SIZE + MAX_PAYLOAD:
+            raise ValueError("audio frame too large")
+        fut = asyncio.run_coroutine_threadsafe(ws.send(bytes(raw)), loop)
+        try:
+            fut.result(5)
+        except Exception as e:
+            raise TransportClosed(str(e)) from None
+
+    def receive_binary(self) -> list[bytes]:
+        out = []
+        while True:
+            try:
+                out.append(self._binbox.get_nowait())
+            except queue.Empty:
+                break
+        with self._audio_lock:
+            self._audio_q_bytes -= sum(len(f) for f in out)
+        return out
+
     def receive(self) -> list[bytes]:
         out = []
         while True:
@@ -171,12 +202,26 @@ class WebSocketHostTransport(DeviceTransport):
             await old.close(4000, "replaced")
         self._inbox.put(first.encode())
         bucket = TokenBucket(self._rate, self._burst)
+        audio_bucket = TokenBucket(self._audio_rate, self._audio_burst)   # tokens are bytes
         try:
             async for msg in ws:
                 if isinstance(msg, bytes):
-                    self.stats["binary_rejected"] += 1
-                    await self._close_hard(ws, 1003, "text only")
-                    break
+                    if len(msg) > HEADER_SIZE + MAX_PAYLOAD:
+                        self.stats["audio_oversize"] += 1
+                        await self._close_hard(ws, 1009, "audio frame too large")
+                        break
+                    if not audio_bucket.allow(len(msg)):
+                        self.stats["audio_rate_limited"] += 1
+                        await self._close_hard(ws, 1008, "audio rate limit")
+                        break
+                    with self._audio_lock:
+                        if self._audio_q_bytes + len(msg) > self._max_audio_q:
+                            self.stats["audio_queue_full"] += 1
+                            await self._close_hard(ws, 1013, "host not draining audio")
+                            break
+                        self._audio_q_bytes += len(msg)
+                    self._binbox.put(msg)
+                    continue
                 if not bucket.allow():
                     self.stats["rate_limited"] += 1
                     await self._close_hard(ws, 1008, "rate limit")

@@ -99,7 +99,7 @@ def test_low_battery_blocks_bright_screen_and_capture(client, device):
         client.request("display.set_brightness", {"level": 90})
     assert e.value.code == "unsafe"
     with pytest.raises(CommandRejected):
-        client.request("audio.start_capture", {"capture_id": "c1", "max_seconds": 5})
+        client.request("audio.start_capture", {"capture_id": "c1", "stream_no": 1, "max_seconds": 5})
 
 
 def test_critical_battery_persists_and_shuts_down(make_device, device):

@@ -18,7 +18,7 @@ from websockets.exceptions import ConnectionClosed, InvalidHandshake
 from companion.application.device_client import backoff_delays
 from protocol import MAX_MESSAGE_BYTES
 
-from .device import PowerState, SimulatedDevice
+from .device import BinaryFrame, PowerState, SimulatedDevice
 
 
 class DeviceLink:
@@ -97,8 +97,7 @@ class DeviceLink:
 
     async def _session(self, ws, stop: asyncio.Event) -> None:
         while not stop.is_set():
-            for raw in self.device.tick():
-                await ws.send(raw.decode())
+            await self._send_all(ws, self.device.tick())
             if self.device.power is PowerState.SLEEPING:
                 return
             try:
@@ -106,11 +105,17 @@ class DeviceLink:
             except (asyncio.TimeoutError, TimeoutError):
                 continue
             if isinstance(msg, bytes):
-                continue
-            for raw in self.device.receive(msg, secure=True):
-                await ws.send(raw.decode())
+                await self._send_all(ws, self.device.receive_binary(msg, secure=True))
+            else:
+                await self._send_all(ws, self.device.receive(msg, secure=True))
             if self.device.power is PowerState.SLEEPING:
                 return
+
+    @staticmethod
+    async def _send_all(ws, outputs) -> None:
+        """Device output is one ordered list of JSON bytes and BinaryFrame objects; keep that order."""
+        for raw in outputs:
+            await ws.send(bytes(raw) if isinstance(raw, BinaryFrame) else raw.decode())
 
     async def _idle(self, stop: asyncio.Event, seconds: float) -> None:
         """Wait while offline or asleep; the device keeps running (scheduled wake, battery, animations)."""

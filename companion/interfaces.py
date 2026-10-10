@@ -21,6 +21,12 @@ class DeviceTransport(ABC):
     @abstractmethod
     def send(self, raw: bytes) -> None: ...
 
+    def send_binary(self, raw: bytes) -> None:
+        raise NotImplementedError("this transport has no binary channel")
+
+    def receive_binary(self) -> list[bytes]:
+        return []
+
     @abstractmethod
     def receive(self) -> list[bytes]:
         """Return all inbound messages available now (may be empty). Never blocks long."""
