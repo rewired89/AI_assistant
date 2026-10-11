@@ -16,4 +16,4 @@ Secret store + TLS wss server (device dials in) -> device client -> onboarding (
 - The LLM is local-only unless `llm.allow_remote: true`. Private reflections use a model only if it is local.
 
 ## Not verified
-Only tested against the simulated robot over loopback TLS with fake STT/LLM and fake TTS. Never run with real Whisper, a real LLM, or hardware. Windows service/auto-start is not set up. Personality drift (small trait changes from experience) is not persisted across restarts. Cubone has no `growth.yaml` yet and shares Ninetales' growth rules.
+Only tested against the simulated robot over loopback TLS with fake STT/LLM and fake TTS. Never run with real Whisper, a real LLM, or hardware. Windows service/auto-start is not set up. Personality drift exists in `Personality.adapt` but nothing calls it yet, so there is nothing to persist. Cubone has no `growth.yaml` yet and shares Ninetales' growth rules.

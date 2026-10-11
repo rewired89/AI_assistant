@@ -50,6 +50,8 @@
 | `companion/app.py`, `companion/__main__.py` | Composition root: `AppConfig` (validated YAML), `Companion` (wires all parts), `python -m companion` |
 | `config/companion.example.yaml`, `docs/running.md` | Example config and run guide |
 | `tests/integration/test_app.py` | Whole companion from config over real TLS with a simulated robot |
+| `tools/memory_review.py` | CLI: list / confirm / delete / clear / export memories; vault shows a count only and can be wiped |
+| `tests/memory/test_review_tool.py` | Review tool: pending flow, --yes guards, vault contents never printed |
 | `companion/security/rotation.py` | `rotate_device_key` (resume-safe) |
 | `tools/provision.py` | CLI: create (bundle) / list / revoke |
 | `companion/application/ws_transport.py` | `WebSocketHostTransport` (wss server in a thread, `DeviceTransport`), `mac_gate`, ssl context helpers, `TokenBucket` |

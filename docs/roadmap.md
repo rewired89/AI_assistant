@@ -7,7 +7,7 @@
 - [ ] Phase 2 minimal physical device (blocked on board)
 - [ ] Phase 3 sprite engine
 - [~] Phase 6: tamagotchi state model + behavior engine done (tested); onboarding done (tested, scripted); habit recognition pending
-- [~] Phase 7 memory: store, vault, retention, extraction rules done; LLM extractor, review UI pending
+- [~] Phase 7 memory: store, vault, retention, extraction rules done; LLM extractor and a friendly review UI pending (CLI review tool exists)
 - [~] Phase 8 voice: pipeline + fakes done and tested (sim, loopback TLS); LLM responder + proactive speech done against fakes + stub server; real STT/TTS/LLM runs, wake word pending
 - [~] Phase 9 psychology engine: implemented + synthetic-scenario tests; NEEDS clinician review before real use
 - [ ] Phase 6 rest, 7 memory, 8 AI + voice, 9 psychology, 10 personality tuning, 11 art, 12 Cubone on same core
