@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from ..textnorm import normalize
+
 GUILT = [
     r"\bdon'?t (leave|go)\b", r"\bplease (don'?t|stay)\b", r"\byou (left|abandoned|ignored|forgot) me\b",
     r"\bi('m| am) (so |really )?(lonely|sad|hurt|heartbroken) without you\b", r"\bi (really )?need you\b",
@@ -42,8 +44,10 @@ _MD = re.compile(r"[*_#`~>|]+")
 
 
 def violations(text: str, canary: str | None = None) -> list[str]:
+    raw = text
+    text = normalize(text)
     found = [name for name, pats in _COMPILED.items() if any(p.search(text) for p in pats)]
-    if canary and canary in text:
+    if canary and (canary in text or canary in raw):
         found.append("prompt_leak")
     return found
 

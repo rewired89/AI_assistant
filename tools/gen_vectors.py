@@ -84,6 +84,9 @@ def scenarios() -> list[Builder]:
     b.text("device.set_config", {"config": {"mic_enabled": False}})
     b.text("audio.start_capture", {"capture_id": "cap-vec-2", "stream_no": 4, "max_seconds": 5}, secure=True,
            note="muted: refused")
+    b.button("long", note="physical long press toggles the mic back ON; no command can do this")
+    b.text("audio.start_capture", {"capture_id": "cap-vec-3", "stream_no": 5, "max_seconds": 5}, secure=True,
+           note="mic is on again, capture opens")
     out.append(b)
 
     pcm = bytes(3200)

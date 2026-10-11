@@ -181,7 +181,7 @@ class Companion:
         if transport is None:
             secrets = SecretStore(cfg.secrets, clock, os.environ.get("NINETAILS_KEY_PASSPHRASE") or None)
             transport = WebSocketHostTransport(server_ssl_context(str(cfg.tls_cert), str(cfg.tls_key)), host=cfg.host,
-                                               port=cfg.port, pre_auth_check=secrets.mac_gate(clock))
+                                               port=cfg.port, pre_auth_check=secrets.mac_gate(clock, only_device=cfg.device_id))
             authenticator = secrets.authenticator(cfg.device_id, clock)
         self.transport = transport
         self.client = DeviceClient(transport, authenticator, clock)

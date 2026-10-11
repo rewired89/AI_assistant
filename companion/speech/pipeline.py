@@ -333,7 +333,9 @@ class VoicePipeline:
             self._start_speaking(self.lines["trouble_hearing"], "calm")
 
     def _route(self, text: str) -> None:
-        if self.onboarding is not None and self.onboarding.awaiting():
+        from ..psychology.safety.screen import RiskLevel, screen        # lazy: psychology imports this module
+        # A safety signal always goes to the responder (where the gate answers), never into an onboarding answer.
+        if self.onboarding is not None and self.onboarding.awaiting() and screen(text).level is RiskLevel.NONE:
             turn = self.onboarding.answer(text, self.clock())
             if not turn.passthrough:
                 spoken = " ".join(t.text for t in (turn, turn.follow_up) if t and t.text)

@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from enum import Enum
@@ -90,23 +91,36 @@ class Storage:
     def save(self, state: dict) -> None:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps({"state": state, "sha256": self._digest(state)}))
+        if self.path.exists() and self._read(self.path) is not None:      # keep the last GOOD copy as a fallback
+            shutil.copyfile(self.path, self.path.with_suffix(".bak"))
         os.replace(tmp, self.path)
 
-    def load(self) -> tuple[dict, bool]:
-        if not self.path.exists():
-            return json.loads(json.dumps(DEFAULT_STATE)), False
+    def _read(self, path: Path) -> dict | None:
         try:
-            blob = json.loads(self.path.read_text())
+            blob = json.loads(path.read_text())
             state = blob["state"]
             if blob["sha256"] != self._digest(state):
-                raise ValueError("checksum")
+                return None
             merged = json.loads(json.dumps(DEFAULT_STATE))
             merged.update({k: v for k, v in state.items() if k != "config"})
             merged["config"].update(state.get("config", {}))
             P(merged["power_state"])
-            return merged, False
+            return merged
         except (ValueError, KeyError, TypeError, OSError):
-            return json.loads(json.dumps(DEFAULT_STATE)), True
+            return None
+
+    def load(self) -> tuple[dict, bool]:
+        """Primary file, else the last good backup (recovered=True), else factory defaults (recovered=True).
+        A recovered state always comes back with the microphone MUTED: after damage the device must fail safe, and
+        only a physical long press can unmute it."""
+        if not self.path.exists() and not self.path.with_suffix(".bak").exists():
+            return json.loads(json.dumps(DEFAULT_STATE)), False
+        state = self._read(self.path)
+        if state is not None:
+            return state, False
+        state = self._read(self.path.with_suffix(".bak")) or json.loads(json.dumps(DEFAULT_STATE))
+        state["config"]["mic_enabled"] = False
+        return state, True
 
 
 class CommandFailure(Exception):
@@ -193,12 +207,16 @@ class SimulatedDevice:
     def factory_reset(self) -> None:
         self.state = json.loads(json.dumps(DEFAULT_STATE))
         self.auth, self.power = None, P.AWAKE
+        if self.ota:
+            self.ota = OtaEngine(self, self.ota.cfg)             # fresh slots and floor, as on first boot
         self.storage.save(self.state)
 
     # ---- output -------------------------------------------------------
     def _emit(self, mtype: str, payload: dict) -> None:
         msg = build(mtype, payload)
         validate_payload(msg, "event")
+        if self.auth is None:
+            return                                   # unprovisioned: inert, says nothing
         self._out.append(self.auth.sign(msg))
 
     def _flush(self) -> list[bytes]:
@@ -293,6 +311,13 @@ class SimulatedDevice:
         if self.power is P.SLEEPING:
             # Physical wake works without Wi-Fi; hardware support still unverified on real board.
             return self.boot("button") if kind == "double" else []
+        if kind == "long":
+            # The ONLY way to unmute the microphone (and a quick physical mute). The host can never unmute.
+            on = not self.state["config"]["mic_enabled"]
+            self.state["config"]["mic_enabled"] = on
+            if not on and self.capture:
+                self._stop_capture("muted")
+            self._persist()
         self._emit("button.pressed", {"button": button, "kind": kind})
         return self._flush()
 

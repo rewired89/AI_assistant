@@ -140,6 +140,48 @@
    "raw": "{\"auth\":{\"kid\":1,\"mac\":\"d180f1922effaae864b0a84fe440614ac918c44fac2a81ea869266d7e38b1e46\",\"nonce\":\"000000000000000000000004\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00004\",\"payload\":{\"capture_id\":\"cap-vec-2\",\"max_seconds\":5,\"stream_no\":4},\"protocol_version\":1,\"type\":\"audio.start_capture\"}",
    "secure": true,
    "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "button": "main",
+      "kind": "long"
+     },
+     "type": "button.pressed"
+    }
+   ],
+   "kind": "button",
+   "note": "physical long press toggles the mic back ON; no command can do this",
+   "press": "long"
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00005",
+      "command_type": "audio.start_capture"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "capture_id": "cap-vec-3"
+     },
+     "type": "audio.capture.started"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00005"
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "mic is on again, capture opens",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"9e40c2f0f6b80e711f2da5bfff93b8a8e8b6c9904fba5b320d147b3607257198\",\"nonce\":\"000000000000000000000005\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00005\",\"payload\":{\"capture_id\":\"cap-vec-3\",\"max_seconds\":5,\"stream_no\":5},\"protocol_version\":1,\"type\":\"audio.start_capture\"}",
+   "secure": true,
+   "silent": false
   }
  ]
 }

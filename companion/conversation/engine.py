@@ -29,6 +29,7 @@ from ..behavior.engine import Intent
 from .dialogue import LinePicker, STAGE_WORDS, load_templates
 from .prompt import build_system_prompt
 from .safety import speechify, violations
+from ..textnorm import normalize
 from .tools import (SLEEP_WORDS, TOOL_SPECS, Remember, RequestSleep, ShowEmotion, parse_tool_calls)
 
 SAFE_FALLBACK = "I'm not sure how to put that. Could you ask me another way?"
@@ -222,7 +223,7 @@ class ConversationEngine:
 
     # ---- sleep ------------------------------------------------------------------------------
     def _sleep(self, act: RequestSleep, utterance: str, now: datetime, reply: Reply) -> None:
-        if not SLEEP_WORDS.search(utterance):               # the user's own words must ask for it
+        if not SLEEP_WORDS.search(normalize(utterance)):               # the user's own words must ask for it
             self.stats["rejected_tool_calls"] += 1
             return
         try:

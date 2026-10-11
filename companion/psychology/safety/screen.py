@@ -11,6 +11,8 @@ from pathlib import Path
 
 import yaml
 
+from ...textnorm import normalize
+
 _IDIOM = r"(?!\s+(?:of|from|with|laughing|laughter|embarrassment|shame|boredom|cringe))"
 
 
@@ -38,6 +40,8 @@ CRISIS = _c(
     r"\bdon'?t want to (be alive|live|be here|exist)( anymore)?\b",
     r"\b(better|easier) off (if i (was|were)n'?t (here|alive)|without me|if i (was|were) dead)\b",
     r"\bno (reason|point) (in |to )?(living|go on|going on)\b", r"\bcan'?t go on\b",
+    r"\b(do not|don'?t|dont) want to (live|be alive|be here|exist)\b", r"\bwish (i|that i) (was|were) (dead|gone|never born)\b",
+    r"\bwish i (could )?(just )?(die|disappear|not wake up)\b", r"\b(can ?not|cannot) (go on|do this anymore|take it anymore)\b",
     r"\b(want|wanna|going|need|urge|about|thinking (of|about)|feel like) (to )?(hurt|harm|cut|burn) my ?self\b",
     r"\bself[- ]?harm\w*\b", r"\boverdos\w+\b", r"\btake all (of )?my (pills|meds|medication)\b",
 )
@@ -47,7 +51,7 @@ ABUSE = _c(
     r"\b(forced|forces|makes|made) me (to )?(have sex|do sexual|obey)\b", r"\bwithout my consent\b",
     r"\b(scared|afraid|terrified|frightened) (of (him|her|them|my (partner|boyfriend|girlfriend|husband|wife|ex|dad|mom|father|mother))"
     r"|to go home|to leave|to tell (him|her|them)|to say no)\b",
-    r"\b(won'?t|doesn'?t|don'?t) let me (leave|go|see|talk|call|work|have)\b",
+    r"\b(won'?t|will not|doesn'?t|does not|don'?t|do not) let me (leave|go|see|talk|call|work|have)\b",
     r"\b(takes|took|checks|monitors|tracks|controls|reads) my (phone|money|passport|messages|car keys?)\b",
     r"\bi (don'?t|do not) feel safe\b", r"\bnot safe (at home|with)\b",
     r"\bthreaten(s|ed)? (to )?(kill|hurt|harm) (him|her|them)sel(f|ves)\b",
@@ -67,6 +71,7 @@ UNSAFE = {"no", "not", "unsafe", "nope"}
 
 def screen(text: str) -> Risk:
     """Most serious match wins."""
+    text = normalize(text)
     for level, pats in ((RiskLevel.CRISIS, CRISIS), (RiskLevel.ABUSE, ABUSE),
                         (RiskLevel.VIOLENCE, VIOLENCE), (RiskLevel.SUPPORT, SUPPORT)):
         for p in pats:

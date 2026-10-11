@@ -128,7 +128,9 @@ class SecretStore:
             raise SecretStoreError("unknown device")
         rec["status"], rec["revoked_at"] = "revoked", self.clock()
         rec["ring"] = {"sign_kid": 0, "keys": {}}  # destroy the key material, keep the audit record
-        self._rings.pop(device_id, None)
+        ring = self._rings.pop(device_id, None)
+        if ring is not None:
+            ring.destroy()                         # live sessions built on this ring stop verifying at once
         self.save()
 
     def begin_rotation(self, device_id: str) -> tuple[int, bytes]:
@@ -142,14 +144,17 @@ class SecretStore:
         return kid, key
 
     # ---- gate for the wss transport ---------------------------------------------------
-    def mac_gate(self, clock: Callable[[], float]) -> Callable[[str], bool]:
-        """First-frame check: known, active device_id and a valid MAC under one of its keys."""
+    def mac_gate(self, clock: Callable[[], float], only_device: str | None = None) -> Callable[[str], bool]:
+        """First-frame check: known, active device_id and a valid MAC under one of its keys.
+        With only_device, every other provisioned robot is refused too (one link serves one robot)."""
         from protocol import ProtocolError, decode
 
         def check(raw: str) -> bool:
             try:
                 msg = decode(raw)
                 did = msg.get("device_id")
+                if only_device is not None and did != only_device:
+                    return False
                 ring = self.ring(did)
                 if ring is None:
                     return False

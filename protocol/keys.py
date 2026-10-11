@@ -37,6 +37,10 @@ class KeyRing:
     def single(cls, secret: bytes) -> "KeyRing":
         return cls({1: secret}, 1)
 
+    def destroy(self) -> None:
+        """Revocation: forget every key so a live Authenticator holding this ring stops accepting immediately."""
+        self._keys = {}
+
     def key(self, kid: int) -> bytes | None:
         return self._keys.get(kid)
 

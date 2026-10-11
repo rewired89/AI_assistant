@@ -11,8 +11,9 @@ from protocol.schema_consts import ANIMATIONS
 MAX_VALUE = 200
 KEY_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 LLM_MEMORY_CATEGORIES = ("profile", "semantic", "goal_habit")    # never episodic/reflection
-SLEEP_WORDS = re.compile(r"\b(sleep|nap|battery|power (down|off|save)|save power|rest|wake me|good ?night|"
-                         r"turn (yourself )?off|shut ?down)\b", re.I)
+SLEEP_WORDS = re.compile(r"\b(go to sleep|go sleep|time (for you )?to sleep|sleep now|take a nap|nap now|have a nap|get some rest|"
+                         r"save (your )?(battery|power)|power (down|off|save)|wake me|good ?night|"
+                         r"turn (yourself )?off|shut ?down|go to bed|sleep (until|till)|sleep for)\b", re.I)
 
 TOOL_SPECS = [
     {"name": "remember",

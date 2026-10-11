@@ -298,7 +298,7 @@ def test_state_survives_corruption_as_factory(env, tmp_path, clock, keys):
     dev, c, up, key, pub = env
     up.confirm(*(lambda u: (up.apply(u, 2) and u, 2))(up.push(pkg(key))))
     (tmp_path / "state.json").write_bytes(b"garbage")
-    for f in (tmp_path / "state.json.bak", tmp_path / "state.json.tmp"):
+    for f in (tmp_path / "state.bak", tmp_path / "state.tmp"):
         if f.exists():
             f.unlink()
     d = SimulatedDevice(SECRET, Storage(tmp_path / "state.json"), clock,

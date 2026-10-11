@@ -55,6 +55,8 @@
 | `tests/companion/test_paced_speech.py` | Pause markers: trusted-only, caps, real silence through the pipeline, barge-in |
 | `protocol/vectors_lib.py`, `protocol/vectors/*.json`, `tools/gen_vectors.py` | Firmware conformance vectors: recorded device conversations to replay on real firmware |
 | `tests/protocol/test_conformance_vectors.py` | Vectors are current and replay exactly; `docs/firmware-conformance.md` |
+| `companion/textnorm.py` | Normalizes curly quotes, zero-width chars and spaced letters before safety patterns run |
+| `tests/test_review_fixes.py` | Regressions for defects found by the adversarial review |
 | `companion/security/rotation.py` | `rotate_device_key` (resume-safe) |
 | `tools/provision.py` | CLI: create (bundle) / list / revoke |
 | `companion/application/ws_transport.py` | `WebSocketHostTransport` (wss server in a thread, `DeviceTransport`), `mac_gate`, ssl context helpers, `TokenBucket` |
