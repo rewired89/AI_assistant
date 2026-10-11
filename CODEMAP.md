@@ -47,6 +47,9 @@
 | `companion/memory/crypto.py` | `FieldCipher`: AES-GCM field encryption + HMAC key index (scrypt/HKDF) |
 | `tools/memory_crypt.py` | CLI: encrypt an existing memory file (verified copy, then swap) |
 | `tests/memory/test_encryption.py` | Encrypted stores: on-disk secrecy, tamper/swap detection, passphrase rules, migration |
+| `companion/app.py`, `companion/__main__.py` | Composition root: `AppConfig` (validated YAML), `Companion` (wires all parts), `python -m companion` |
+| `config/companion.example.yaml`, `docs/running.md` | Example config and run guide |
+| `tests/integration/test_app.py` | Whole companion from config over real TLS with a simulated robot |
 | `companion/security/rotation.py` | `rotate_device_key` (resume-safe) |
 | `tools/provision.py` | CLI: create (bundle) / list / revoke |
 | `companion/application/ws_transport.py` | `WebSocketHostTransport` (wss server in a thread, `DeviceTransport`), `mac_gate`, ssl context helpers, `TokenBucket` |
