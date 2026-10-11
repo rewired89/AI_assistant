@@ -22,7 +22,8 @@ def good(**kw):
     lambda r: r[:5],                                    # short
     lambda r: b"\x02" + r[1:],                          # version
     lambda r: r[:1] + b"\x00" + r[2:],                  # kind 0
-    lambda r: r[:1] + b"\x03" + r[2:],                  # kind 3
+    lambda r: r[:1] + b"\x09" + r[2:],                  # kind 9
+    lambda r: r[:1] + b"\x03" + r[2:],                  # firmware kind with a PCM codec
     lambda r: r[:2] + b"\x00\x00" + r[4:],              # stream 0
     lambda r: r[:8] + b"\x02" + r[9:],                  # reserved flag
     lambda r: r[:9] + b"\x07" + r[10:],                 # unknown codec
@@ -42,6 +43,16 @@ def test_odd_pcm_and_oversize_rejected():
     a.unpack(good(payload=b"\x00" * 3, codec=1))        # opus payloads are opaque (still unsupported by firmware)
     with pytest.raises(a.AudioFrameError):
         a.pack(1, 1, 0, b"\x00" * (a.MAX_PAYLOAD + 2))
+
+
+def test_firmware_frames_are_raw_and_not_confused_with_audio():
+    raw = a.pack(a.KIND_OTA, 5, 0, b"\x00\x01\x02", codec=a.CODEC_RAW)           # odd length is fine for firmware bytes
+    f = a.unpack(raw)
+    assert f.kind == a.KIND_OTA and f.codec == a.CODEC_RAW and f.payload == b"\x00\x01\x02"
+    with pytest.raises(a.AudioFrameError):
+        a.pack(a.KIND_OTA, 5, 0, b"\x00\x01")                                      # pcm codec on a firmware frame
+    with pytest.raises(a.AudioFrameError):
+        a.pack(a.KIND_PLAYBACK, 5, 0, b"\x00\x00", codec=a.CODEC_RAW)              # raw codec on an audio frame
 
 
 @pytest.mark.parametrize("kw", [dict(kind=9), dict(stream_no=0), dict(stream_no=70000), dict(seq=-1), dict(seq=2 ** 32)])

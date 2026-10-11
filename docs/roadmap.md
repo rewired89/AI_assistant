@@ -2,7 +2,7 @@
 
 - [x] Phase 0 architecture docs, repo, protocol schema (sim-level)
 - [x] Phase 1 skeleton: config validation, tests, interfaces
-- [~] Phase 4 protocol: codec, auth, simulated device, client done; wss transport + reconnect done (sim, loopback); binary audio frames done (sim); secret provisioning + rotation done (sim)
+- [~] Phase 4 protocol: codec, auth, simulated device, client done; wss transport + reconnect done (sim, loopback); binary audio frames done (sim); secret provisioning + rotation done (sim); OTA (signed A/B, trial, auto rollback) done (sim)
 - [~] Phase 5 power: state machine + persistence in simulator only; real hardware and measurements pending
 - [ ] Phase 2 minimal physical device (blocked on board)
 - [ ] Phase 3 sprite engine

@@ -35,6 +35,12 @@
 | `protocol/audio.py` | Binary audio frame `pack`/`unpack` (strict), constants, `pcm_seconds` |
 | `protocol/keys.py` | `KeyRing` (kid->key, signing kid, adopt/retire rules, no key in repr) |
 | `companion/security/secrets.py` | `SecretStore`: per-device keys, bundle creation, revoke, begin_rotation, `mac_gate`; 0600 + optional scrypt/Fernet |
+| `protocol/ota.py` | Manifest canonical bytes, SHA-256, P-256 signature verify (shared by host and device) |
+| `companion/security/ota_signing.py` | Offline signing: `Package`, `build_package`, `check_package`, key generation (0600) |
+| `companion/application/ota_updater.py` | `OtaUpdater`: push (windowed, resumable), apply, confirm, abort; `safe_to_apply` |
+| `simulator/ota.py` | `OtaEngine`: A/B slots, verify, trial, rollback, anti-rollback floor |
+| `tools/ota.py` | CLI: keygen / build / verify / info |
+| `tests/protocol/test_ota_format.py`, `tests/firmware/test_ota.py`, `tests/integration/test_wss_ota.py` | OTA format, device rules, update over real TLS |
 | `companion/security/rotation.py` | `rotate_device_key` (resume-safe) |
 | `tools/provision.py` | CLI: create (bundle) / list / revoke |
 | `companion/application/ws_transport.py` | `WebSocketHostTransport` (wss server in a thread, `DeviceTransport`), `mac_gate`, ssl context helpers, `TokenBucket` |

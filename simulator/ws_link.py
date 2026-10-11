@@ -31,6 +31,7 @@ class DeviceLink:
         self.last_error: BaseException | None = None
         self.dropped_offline = 0
         self._outbox: list = []
+        self._reboots_seen = 0
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stop: asyncio.Event | None = None
         self._thread: threading.Thread | None = None
@@ -107,7 +108,7 @@ class DeviceLink:
                 pending, self._outbox = self._outbox, []
                 await self._send_all(ws, pending)
             await self._send_all(ws, self.device.tick())
-            if self.device.power is PowerState.SLEEPING:
+            if self.device.power is PowerState.SLEEPING or self._rebooted():
                 return
             try:
                 msg = await asyncio.wait_for(ws.recv(), self.tick_s)
@@ -117,8 +118,15 @@ class DeviceLink:
                 await self._send_all(ws, self.device.receive_binary(msg, secure=True))
             else:
                 await self._send_all(ws, self.device.receive(msg, secure=True))
-            if self.device.power is PowerState.SLEEPING:
+            if self.device.power is PowerState.SLEEPING or self._rebooted():
                 return
+
+    def _rebooted(self) -> bool:
+        """The device restarted (e.g. after a firmware update): its connection is gone, so drop the socket and redial."""
+        if self.device.rebooted != self._reboots_seen:
+            self._reboots_seen = self.device.rebooted
+            return True
+        return False
 
     @staticmethod
     async def _send_all(ws, outputs) -> None:

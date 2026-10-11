@@ -5,6 +5,18 @@
     "stream_no": {"type": "integer", "minimum": 1, "maximum": 65535},
     "ident": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
     "power_state": {"enum": ["AWAKE","IDLE","SLEEPING","WAKING","LOW_BATTERY","CRITICAL_BATTERY"]},
+    "update_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{4,64}$"},
+    "ota_manifest": {"type": "object", "additionalProperties": false,
+      "required": ["product", "board", "version", "build", "size", "sha256", "created", "sign_kid"],
+      "properties": {
+        "product": {"type": "string", "pattern": "^[a-z0-9-]{1,32}$"}, "board": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,32}$"},
+        "version": {"type": "string", "pattern": "^[0-9]{1,4}\\.[0-9]{1,4}\\.[0-9]{1,4}(-[a-z0-9.]{1,16})?$"},
+        "build": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "requires_build": {"type": "integer", "minimum": 0, "maximum": 2147483647},
+        "size": {"type": "integer", "minimum": 1, "maximum": 8388608},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "created": {"type": "string", "maxLength": 40},
+        "sign_kid": {"type": "integer", "minimum": 1, "maximum": 1000}}},
     "error_code": {"enum": ["invalid_payload","unsupported_command","invalid_state","unsafe","not_allowed","busy","timeout","internal"]}
   },
   "commands": {
@@ -33,6 +45,12 @@
     "security.rotate_key": {"type":"object","required":["kid","key"],"additionalProperties":false,"properties":{
       "kid":{"type":"integer","minimum":2,"maximum":1000000},
       "key":{"type":"string","pattern":"^[0-9a-f]{64}$","description":"New 256-bit HMAC key, hex. Accepted only over a TLS channel."}}},
+    "ota.begin": {"type":"object","required":["update_id","stream_no","manifest","signature"],"additionalProperties":false,"properties":{
+      "update_id":{"$ref":"#/$defs/update_id"},"stream_no":{"$ref":"#/$defs/stream_no"},"manifest":{"$ref":"#/$defs/ota_manifest"},
+      "signature":{"type":"string","pattern":"^[A-Za-z0-9+/]{64,200}={0,2}$","description":"base64 ECDSA P-256 / SHA-256 (DER) over the canonical manifest JSON"}}},
+    "ota.abort": {"type":"object","required":["update_id"],"additionalProperties":false,"properties":{"update_id":{"$ref":"#/$defs/update_id"}}},
+    "ota.apply": {"type":"object","required":["update_id"],"additionalProperties":false,"properties":{"update_id":{"$ref":"#/$defs/update_id"}}},
+    "ota.confirm": {"type":"object","required":["update_id"],"additionalProperties":false,"properties":{"update_id":{"$ref":"#/$defs/update_id"}}},
     "device.get_status": {"type":"object","additionalProperties":false,"properties":{}},
     "device.set_config": {"type":"object","required":["config"],"additionalProperties":false,"properties":{
       "config":{"type":"object","minProperties":1,"additionalProperties":false,"properties":{
@@ -44,7 +62,8 @@
   "events": {
     "device.ready": {"type":"object","required":["firmware_version","protocol_versions","boot_cause","recovered_state"],"additionalProperties":false,"properties":{
       "firmware_version":{"type":"string","maxLength":32},"protocol_versions":{"type":"array","items":{"type":"integer"},"minItems":1},
-      "boot_cause":{"enum":["power_on","timer","button","reset"]},"recovered_state":{"type":"boolean"}}},
+      "boot_cause":{"enum":["power_on","timer","button","reset"]},"recovered_state":{"type":"boolean"},
+      "build":{"type":"integer","minimum":1}}},
     "button.pressed": {"type":"object","required":["button","kind"],"additionalProperties":false,"properties":{
       "button":{"$ref":"#/$defs/ident"},"kind":{"enum":["single","double","long"]}}},
     "touch.detected": {"type":"object","required":["zone"],"additionalProperties":false,"properties":{"zone":{"$ref":"#/$defs/ident"}}},
@@ -64,6 +83,20 @@
       "reason":{"enum":["battery_saving","user_request","scheduled","idle","critical_battery"]},"wake_at":{"type":["string","null"]}}},
     "power.waking": {"type":"object","required":["cause"],"additionalProperties":false,"properties":{"cause":{"enum":["scheduled","button","host_request","reset"]}}},
     "power.woke": {"type":"object","required":["cause"],"additionalProperties":false,"properties":{"cause":{"enum":["scheduled","button","host_request","reset"]}}},
+    "ota.progress": {"type":"object","required":["update_id","received","size"],"additionalProperties":false,"properties":{
+      "update_id":{"$ref":"#/$defs/update_id"},"received":{"type":"integer","minimum":0},"size":{"type":"integer","minimum":1}}},
+    "ota.verified": {"type":"object","required":["update_id","build"],"additionalProperties":false,"properties":{
+      "update_id":{"$ref":"#/$defs/update_id"},"build":{"type":"integer","minimum":1}}},
+    "ota.failed": {"type":"object","required":["update_id","reason"],"additionalProperties":false,"properties":{
+      "update_id":{"$ref":"#/$defs/update_id"},
+      "reason":{"enum":["bad_chunk","size_mismatch","hash_mismatch","low_battery","aborted","power_state","busy","write_error","timeout"]}}},
+    "ota.applying": {"type":"object","required":["update_id","build"],"additionalProperties":false,"properties":{
+      "update_id":{"$ref":"#/$defs/update_id"},"build":{"type":"integer","minimum":1}}},
+    "ota.committed": {"type":"object","required":["update_id","build","version"],"additionalProperties":false,"properties":{
+      "update_id":{"$ref":"#/$defs/update_id"},"build":{"type":"integer","minimum":1},"version":{"type":"string","maxLength":32}}},
+    "ota.rolled_back": {"type":"object","required":["update_id","from_build","to_build","reason"],"additionalProperties":false,"properties":{
+      "update_id":{"$ref":"#/$defs/update_id"},"from_build":{"type":"integer","minimum":0},"to_build":{"type":"integer","minimum":0},
+      "reason":{"enum":["confirm_timeout","self_test_failed","boot_failures"]}}},
     "command.accepted": {"type":"object","required":["command_id","command_type"],"additionalProperties":false,"properties":{
       "command_id":{"type":"string"},"command_type":{"type":"string"}}},
     "command.completed": {"type":"object","required":["command_id"],"additionalProperties":false,"properties":{

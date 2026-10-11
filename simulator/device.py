@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 from protocol import audio as aud
+from .ota import OtaConfig, OtaEngine
 from protocol import (Authenticator, KeyRing, ProtocolError, SUPPORTED_VERSIONS, build, check_version,
                       decode, encode, validate_payload)
 
@@ -116,7 +117,8 @@ class CommandFailure(Exception):
 
 class SimulatedDevice:
     def __init__(self, secret: "bytes | KeyRing | None", storage: Storage, clock: Callable[[], float],
-                 thresholds: Thresholds | None = None, battery_percent: int = 100, device_id: str | None = None):
+                 thresholds: Thresholds | None = None, battery_percent: int = 100, device_id: str | None = None,
+                 ota: OtaConfig | None = None):
         """`secret` only seeds the key ring when flash holds none (factory provisioning in tests);
         keys already in storage win, so rotations survive restarts. None = unprovisioned device."""
         self.clock = clock
@@ -126,6 +128,8 @@ class SimulatedDevice:
         self.rejected_count = 0
         self._secure = False
         self.state, self.recovered = storage.load()
+        self.rebooted = 0
+        self.ota = OtaEngine(self, ota) if ota is not None else None
         self.auth: Authenticator | None = None
         if self.state.get("keys"):
             self._set_keys(KeyRing.from_dict(self.state["keys"]), self.state.get("device_id"))
@@ -139,6 +143,31 @@ class SimulatedDevice:
         self.audio_rejected = 0
         self._seen: OrderedDict[str, list[dict]] = OrderedDict()
         self._out: list[dict] = []
+
+    @property
+    def fw_version(self) -> str:
+        return self.ota.running()["version"] if self.ota else FIRMWARE_VERSION
+
+    def reboot(self, cause: str = "reset") -> list[bytes]:
+        """Processor restart (e.g. after an update). RAM is lost, flash state survives, boot logic runs again."""
+        self.rebooted += 1
+        self.animation = self.capture = self.playback = None
+        self._seen.clear()
+        self._out = []
+        if self.auth is not None:
+            self.auth._seen.clear()
+        self._persist()
+        self.state, self.recovered = self.storage.load()
+        if self.ota:
+            self.ota.st = self.state["ota"]
+        self.power = P(self.state["power_state"])
+        outs = self.boot(cause)
+        if self.ota:
+            notice = self.ota.take_notice()
+            if notice:                                  # also delivered here so a connected host sees it immediately
+                self._emit("ota.rolled_back", notice)
+                outs = outs + self._flush()
+        return outs
 
     # ---- keys / provisioning --------------------------------------------
     def _set_keys(self, ring: KeyRing, device_id: str | None) -> None:
@@ -195,6 +224,8 @@ class SimulatedDevice:
     def boot(self, cause: str = "power_on") -> list[bytes]:
         """Called on every processor start. Deep-sleep wake is a reboot on ESP32."""
         self.state["boot_count"] += 1
+        if self.ota:
+            self.ota.on_boot()
         if self.power is P.SLEEPING:
             if cause == "timer" and not self._wake_due():
                 return self._flush()  # spurious timer wake: go straight back to sleep
@@ -203,9 +234,11 @@ class SimulatedDevice:
             self._wake("reset")
         else:
             self._settle_after_wake()
-        self._emit("device.ready", {"firmware_version": FIRMWARE_VERSION,
-                                    "protocol_versions": list(SUPPORTED_VERSIONS),
-                                    "boot_cause": cause, "recovered_state": self.recovered})
+        ready = {"firmware_version": self.fw_version, "protocol_versions": list(SUPPORTED_VERSIONS),
+                 "boot_cause": cause, "recovered_state": self.recovered}
+        if self.ota:
+            ready["build"] = self.ota.running()["build"]
+        self._emit("device.ready", ready)
         return self._flush()
 
     def _wake_due(self) -> bool:
@@ -248,7 +281,12 @@ class SimulatedDevice:
         without the device claiming a reboot (device.ready is boot-only)."""
         self._emit("battery.updated", {"percent": self.battery, "power_state": self.power.value,
                                        "warning": self.battery <= self.th.warn})
-        return self._flush()[0]
+        if self.ota:
+            notice = self.ota.take_notice()
+            if notice:
+                self._emit("ota.rolled_back", notice)
+        first, self._out = self._out[0], self._out[1:]                 # the rest goes out with the next flush
+        return encode(first)
 
     # ---- physical inputs ----------------------------------------------
     def press_button(self, kind: str = "single", button: str = "main") -> list[bytes]:
@@ -260,6 +298,8 @@ class SimulatedDevice:
 
     def set_battery(self, percent: int) -> list[bytes]:
         self.battery = percent
+        if self.ota and self.ota.busy() and percent < self.ota.cfg.min_battery_apply and self.power is not P.SLEEPING:
+            self.ota.fail("low_battery")                 # never keep writing flash on a dying battery
         if self.power is P.SLEEPING:
             return []
         target = self._battery_state()
@@ -280,7 +320,7 @@ class SimulatedDevice:
         if self.power is P.SLEEPING:
             if self._wake_due():
                 self._wake("scheduled")
-                self._emit("device.ready", {"firmware_version": FIRMWARE_VERSION,
+                self._emit("device.ready", {"firmware_version": self.fw_version,
                                             "protocol_versions": list(SUPPORTED_VERSIONS),
                                             "boot_cause": "timer", "recovered_state": False})
             return self._flush()
@@ -289,7 +329,15 @@ class SimulatedDevice:
         if self.capture and now >= self.capture["ends"]:
             self._stop_capture("timeout")
         self._advance_playback(now)
-        return self._flush()
+        if self.ota:
+            self.ota.tick(now)
+        return self._with_reboot(self._flush())
+
+    def _with_reboot(self, out: list) -> list:
+        """An update (or a rollback) asked for a restart: send what is queued, then restart."""
+        if self.ota and self.ota.take_reboot():
+            return out + self.reboot("reset")
+        return out
 
     # ---- inbound ------------------------------------------------------
     def receive(self, raw: bytes | str, secure: bool = False) -> list[bytes]:
@@ -319,7 +367,7 @@ class SimulatedDevice:
                            if isinstance(m, dict) and m["type"].startswith("command.")]
         while len(self._seen) > 256:
             self._seen.popitem(last=False)
-        return self._flush()
+        return self._with_reboot(self._flush())
 
     def _handle(self, msg: dict) -> None:
         self._advance_playback(self.clock())  # commands must see playback progress as of now
@@ -372,6 +420,8 @@ class SimulatedDevice:
 
     # ---- audio ----------------------------------------------------------
     def _cmd_audio_play(self, mid: str, p: dict):
+        if self.ota and self.ota.busy():
+            raise CommandFailure("busy", "firmware update in progress")
         if p["format"] != "pcm16_16k_mono":
             raise CommandFailure("unsupported_command", "only pcm16_16k_mono is supported in this firmware")
         if self.playback:
@@ -424,6 +474,11 @@ class SimulatedDevice:
             if not secure:
                 raise aud.AudioFrameError("binary audio needs a TLS channel")
             f = aud.unpack(frame)
+            if f.kind == aud.KIND_OTA:
+                if self.ota is None:
+                    raise aud.AudioFrameError("no update support")
+                self.ota.on_frame(f)
+                return self._flush()
             if f.kind != aud.KIND_PLAYBACK or f.codec != aud.CODEC_PCM16:
                 raise aud.AudioFrameError("unexpected kind/codec")
             if pl is None or pl["stream_no"] != f.stream_no or pl["ended"]:
@@ -472,6 +527,8 @@ class SimulatedDevice:
         return True
 
     def _cmd_audio_start_capture(self, mid: str, p: dict):
+        if self.ota and self.ota.busy():
+            raise CommandFailure("busy", "firmware update in progress")
         if not self.state["config"]["mic_enabled"]:
             raise CommandFailure("not_allowed", "microphone is muted")
         if self.power in (P.LOW_BATTERY, P.CRITICAL_BATTERY):
@@ -540,12 +597,31 @@ class SimulatedDevice:
         ring.use_for_signing(p["kid"])  # old key stays valid until the host is seen using the new one
         return {"kid": p["kid"]}
 
+    def _ota_or_fail(self):
+        if self.ota is None:
+            raise CommandFailure("unsupported_command", "this firmware has no update support")
+        if not self._secure:
+            raise CommandFailure("not_allowed", "firmware updates need a TLS channel")
+        return self.ota
+
+    def _cmd_ota_begin(self, mid: str, p: dict):
+        return self._ota_or_fail().begin(p)
+
+    def _cmd_ota_abort(self, mid: str, p: dict):
+        self._ota_or_fail().abort(p["update_id"])
+
+    def _cmd_ota_apply(self, mid: str, p: dict):
+        return self._ota_or_fail().apply(p["update_id"])
+
+    def _cmd_ota_confirm(self, mid: str, p: dict):
+        return self._ota_or_fail().confirm(p["update_id"])
+
     def _cmd_device_get_status(self, mid: str, p: dict):
         return {"power_state": self.power.value, "battery_percent": self.battery,
                 "brightness": self.brightness, "config": dict(self.state["config"]),
                 "wake_at": self.state.get("wake_at"), "capture_active": bool(self.capture), "playback_active": bool(self.playback),
                 "animation": self.animation["name"] if self.animation else None,
-                "firmware_version": FIRMWARE_VERSION}
+                "firmware_version": self.fw_version, **({"build": self.ota.running()["build"], "ota": self.ota.summary()} if self.ota else {})}
 
     def _cmd_device_set_config(self, mid: str, p: dict):
         self.state["config"].update(p["config"])
