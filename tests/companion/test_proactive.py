@@ -21,7 +21,7 @@ D = 86400
 
 class World:
     def __init__(self, rig, clock, llm=None, memory=None, proactive="frequent", name="Sam", state_store=None,
-                 curiosity=0.95, playfulness=0.3, **dcfg):
+                 curiosity=0.95, playfulness=0.3, psychology=None, safety=None, **dcfg):
         self.clock = clock
         self.r = rig(responder=ScriptedResponder([Reply("Okay.")]))
         self.beh = self.r.pipe.engine
@@ -31,10 +31,11 @@ class World:
         cfg = pc.load(SP / "ninetales" / "personality.yaml")
         self.conv = ConversationEngine(self.llm, lambda: cfg, self.beh.state, clock, memory=memory,
                                        user_name=lambda: name,
-                                       dialogue=LinePicker(load_templates(SP / "ninetales"), random.Random(2)))
+                                       dialogue=LinePicker(load_templates(SP / "ninetales"), random.Random(2)),
+                                       safety=safety, psychology=psychology)
         self.r.pipe.responder = self.conv
         self.d = ProactiveDirector(self.beh, self.conv, self.r.pipe, clock, memory=memory, state_store=state_store,
-                                   config=DirectorConfig(**dcfg), rng=random.Random(3))
+                                   config=DirectorConfig(**dcfg), rng=random.Random(3), psychology=psychology)
         self.device = self.r.device
 
     def drive(self, seconds, stop=None, coarse=20.0, fine=0.05):

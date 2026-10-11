@@ -28,6 +28,7 @@ DEFAULTS: dict = {
     "offer_save_battery": ["My battery is getting low. Want me to take a nap to save power?"],
     "milestone": ["I feel like I grew a little! I'm a {stage_word} now."],
     "comfort_touch_reply": ["Hehe, that feels nice!", "Mmm, thank you!"],
+    "followup_due": ["It's the time you planned to come back to something. Want to revisit it now? You can say yes or no."],
 }
 
 

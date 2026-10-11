@@ -1,0 +1,319 @@
+# Exercise library. Every entry needs the fields listed in docs/psychology-design.md (checked by tests).
+# Step kinds: say | ask_text | ask_choice | ask_scale | ask_yesno | ask_time | build_text
+# Answers live in memory for the session only; nothing is saved unless she says yes at the end.
+# `recap` marks answers that go into the optional private note (her words only, never the robot's interpretation).
+# Success criteria are things SHE can see for herself, never agreement with the robot or with anyone else.
+exercises:
+
+- exercise_id: naming_emotions
+  name: "Naming a feeling"
+  kind: scripted
+  intended_skill: "Emotional awareness: telling an emotion, a body sensation and a thought apart"
+  source_or_evidence_basis: [affect_labeling, emotional_granularity]
+  when_to_offer: ["She says she feels bad, off or upset and cannot say why", "She asks to name a feeling"]
+  when_not_to_offer: ["Any safety signal in the last hour", "She is in acute panic: offer slow breathing first", "She declined an exercise this session"]
+  estimated_duration: "2-3 minutes"
+  instructions: "Short guided questions: what is happening, which word fits best (offered as guesses), where it is felt in the body, which thought goes with it, how strong it is."
+  steps:
+    - {id: intro, kind: say, text: "Let's slow down and put a word on it. There are no wrong answers, you can skip anything, and you can stop whenever you like."}
+    - {id: happening, kind: ask_text, prompt: "In a sentence or two, what is going on right now?", recap: "What was happening"}
+    - id: feeling
+      kind: ask_choice
+      prompt: "Which of these feels closest? Frustrated, hurt, disappointed, anxious, overwhelmed, sad, angry, lonely, or something else. I might be wrong, so correct me."
+      options: [frustrated, hurt, disappointed, anxious, overwhelmed, sad, angry, lonely]
+      allow_other: true
+      recap: "The feeling I named"
+      indicator: named_feeling
+    - {id: body, kind: ask_text, prompt: "Where do you notice it in your body, if anywhere?", recap: "Where I felt it", optional: true}
+    - {id: thought, kind: ask_text, prompt: "What thought goes along with it?", recap: "The thought that came with it", optional: true}
+    - {id: edu, kind: say, text: "A feeling, a body sensation and a thought are three different things. The feeling is real, even if the thought turns out not to be the whole story."}
+    - {id: intensity, kind: ask_scale, prompt: "How strong is it, from zero to ten?", high_threshold: 9, indicator: rated_intensity}
+    - {id: shift, kind: ask_yesno, prompt: "Did putting a word on it change anything, even a little?"}
+  reflection_questions: ["What would you like to do with this feeling, if anything?", "Is there someone you trust you could tell?"]
+  privacy_behavior: "Answers stay in memory for this session and are discarded when it ends. A private note is saved only if she says yes at the end."
+  success_criteria: ["She put at least one feeling into her own words or chose one that fit", "She noticed the difference between the feeling and the thought"]
+  limitations: ["The robot cannot know what she feels; every word is a guess she can reject", "Evidence that labeling feelings helps is real but modest and varies by person"]
+
+- exercise_id: facts_vs_interpretations
+  name: "What happened versus the story about it"
+  kind: scripted
+  intended_skill: "Separating observable facts from interpretations and assumptions about intent"
+  source_or_evidence_basis: [cbt_cognitive_restructuring]
+  when_to_offer: ["She describes a hurtful event and is drawing a conclusion about someone's intent", "She asks to think something through"]
+  when_not_to_offer: ["Any safety signal", "She is highly distressed (use breathing or grounding first)", "Abuse or coercion may be involved (this exercise can look like doubting her experience)"]
+  estimated_duration: "4-5 minutes"
+  instructions: "Describe the event like a camera, name the story, weigh what fits and what does not, find what she can influence."
+  steps:
+    - {id: intro, kind: say, text: "We'll look at what happened and the story that came with it. Your feelings are real either way. This is about getting clear, not about who is right."}
+    - {id: event, kind: ask_text, prompt: "Tell me what happened like a camera would have recorded it: what was said or done, and nothing about why.", recap: "What happened (observable)"}
+    - {id: story, kind: ask_text, prompt: "What story did you tell yourself about why it happened?", recap: "The story I told myself"}
+    - {id: for, kind: ask_text, prompt: "What fits that story?", recap: "What fits the story", optional: true}
+    - {id: against, kind: ask_text, prompt: "What does not fit it, or what else could explain it? Even an unlikely idea counts.", recap: "Other explanations", optional: true, indicator: considered_alternative}
+    - {id: unknown, kind: ask_text, prompt: "What do you not know yet, and how could you find out, maybe by asking?", recap: "What I don't know yet", optional: true}
+    - {id: influence, kind: ask_text, prompt: "What part of this can you influence?", recap: "What I can influence", indicator: found_influence}
+    - {id: wrap, kind: say, text: "A story can feel completely true and still be a guess. You decide what to do with this."}
+  reflection_questions: ["Does your reaction match what matters to you?", "Is there something you want to say or ask?"]
+  privacy_behavior: "Session memory only. Optional private note in her own words."
+  success_criteria: ["She separated at least one observable fact from an interpretation", "She named one thing within her influence"]
+  limitations: ["A short robot-led version of thought-record questions has not been tested", "It must never be used to talk her out of what actually happened to her"]
+
+- exercise_id: reflective_listening_practice
+  name: "Practicing reflective listening"
+  kind: scripted
+  intended_skill: "Reflecting what another person said and felt before responding"
+  source_or_evidence_basis: [reflective_listening]
+  when_to_offer: ["She wants to get better at hearing the other person", "She is preparing for a conversation"]
+  when_not_to_offer: ["Any safety signal", "She is in a fresh, raw conflict (let her calm first)", "Abuse or coercion may be involved"]
+  estimated_duration: "4 minutes"
+  instructions: "She recalls something the other person said, says it back without adding opinion, and drafts a question to check she understood."
+  steps:
+    - {id: intro, kind: say, text: "Reflective listening means saying back what you heard, so the other person feels understood, before you answer. We'll practice with something real or made up."}
+    - {id: said, kind: ask_text, prompt: "What did the other person say, as best you remember?", recap: "What they said"}
+    - {id: reflect, kind: ask_text, prompt: "Now say it back starting with 'It sounds like...' and add no opinion of your own.", recap: "My reflection", indicator: practiced_reflection}
+    - {id: guess, kind: ask_text, prompt: "What might they be feeling or needing? Treat it as a guess.", recap: "My guess about their feeling or need", optional: true}
+    - {id: check, kind: ask_text, prompt: "What could you ask to check that you understood, like 'Did I get that right?'", recap: "My checking question"}
+    - {id: wrap, kind: say, text: "Understanding someone does not mean agreeing with them. It just makes the conversation safer for both of you."}
+  reflection_questions: ["How hard was it to hold back your own answer?"]
+  privacy_behavior: "Session memory only. Optional private note in her own words."
+  success_criteria: ["She restated what was said without adding judgment", "She has a checking question ready"]
+  limitations: ["The evidence is for trained use in therapy, not for practice with a robot", "The robot plays no part of the other person and cannot predict how they will respond"]
+
+- exercise_id: conflict_map
+  name: "Mapping a conflict"
+  kind: scripted
+  intended_skill: "Laying out a disagreement: my view, a guess at theirs, what we share, facts versus assumptions"
+  source_or_evidence_basis: [cbt_cognitive_restructuring, reflective_listening]
+  when_to_offer: ["She wants to understand a disagreement before talking", "She asks for help seeing both sides"]
+  when_not_to_offer: ["Any safety signal", "Abuse or coercion may be involved", "She is overwhelmed right now"]
+  estimated_duration: "5 minutes"
+  instructions: "A quick map of one disagreement. The robot hears only her side and never decides who is right."
+  steps:
+    - {id: intro, kind: say, text: "I only know your side, and I wasn't there, so I can't say who is right. We can still map this so you know what you want to say."}
+    - {id: topic, kind: ask_text, prompt: "In one sentence, what is the disagreement about?", recap: "The disagreement"}
+    - {id: mine, kind: ask_text, prompt: "How does it look from your side, and what matters most to you in it?", recap: "My side"}
+    - {id: theirs, kind: ask_text, prompt: "What might it look like from their side? That is a guess, and the only way to know is to ask them.", recap: "A guess about their side", indicator: considered_other_side}
+    - {id: shared, kind: ask_text, prompt: "What do you both want, even if you disagree about how?", recap: "What we both want", optional: true}
+    - {id: facts, kind: ask_text, prompt: "What is a fact you are sure of, and what is an assumption?", recap: "Facts and assumptions", optional: true}
+    - {id: step, kind: ask_text, prompt: "What is one small thing you could do next?", recap: "My next step"}
+  reflection_questions: ["What would a fair outcome look like for both of you?"]
+  privacy_behavior: "Session memory only. Optional private note in her own words. Nothing is shared with anyone."
+  success_criteria: ["She can state her side and at least one guess about theirs", "She has one next step"]
+  limitations: ["One-sided by nature: the robot hears one person", "It cannot tell whether the other person's side is as she imagines"]
+
+- exercise_id: prepare_difficult_conversation
+  name: "Preparing for a difficult conversation"
+  kind: scripted
+  intended_skill: "Saying what you need without blame: observation, feeling, need, concrete request"
+  source_or_evidence_basis: [gottman_soft_startup, nvc]
+  when_to_offer: ["She wants to raise something hard with someone", "She asks how to say something"]
+  when_not_to_offer: ["Any safety signal", "Abuse or coercion may be involved (safety first, not communication tips)", "She is overwhelmed: plan a break first"]
+  estimated_duration: "5-6 minutes"
+  instructions: "She builds one gentle opening from her own words. The draft is hers to change."
+  steps:
+    - {id: intro, kind: say, text: "We'll build a gentle way to start the conversation. You can change every word, and this is a tool, not a script."}
+    - {id: goal, kind: ask_text, prompt: "What do you hope will be different after this conversation?", recap: "What I hope for"}
+    - {id: observation, kind: ask_text, prompt: "What specifically happened? Say it like a camera would, with no judgment, like 'the dishes were still there on Tuesday'.", recap: "What I observed"}
+    - {id: feeling, kind: ask_text, prompt: "How did you feel about that? One word is fine.", recap: "How I felt"}
+    - {id: need, kind: ask_text, prompt: "What do you need?", recap: "What I need"}
+    - {id: request, kind: ask_text, prompt: "What is one specific, doable thing you would ask for?", recap: "My request"}
+    - id: draft
+      kind: build_text
+      template: "When {observation}, I felt {feeling}. What I need is {need}. Would you be willing to {request}?"
+      lead: "Here is a draft in your own words. Change anything that doesn't sound like you: "
+      recap: "My draft opening"
+      indicator: drafted_opening
+    - {id: theirs, kind: ask_text, prompt: "What might they say back? That is a guess. How could you listen first?", recap: "A guess at their reply", optional: true}
+    - {id: pause, kind: ask_yesno, prompt: "If it gets heated, would you like a plan for taking a break and coming back?"}
+  reflection_questions: ["Is this the right time and place for both of you?"]
+  privacy_behavior: "Session memory only. Optional private note in her own words."
+  success_criteria: ["She has an opening she would actually say", "She made a specific request, not a complaint"]
+  limitations: ["Formulaic phrasing can feel stiff", "The robot cannot predict the other person's reaction", "Evidence for these formats is limited and mostly observational"]
+
+- exercise_id: values_clarification
+  name: "What matters to you in relationships"
+  kind: scripted
+  intended_skill: "Naming values and linking them to one small action"
+  source_or_evidence_basis: [values_clarification]
+  when_to_offer: ["She asks what she wants from a relationship", "She wants to check a reaction against her values"]
+  when_not_to_offer: ["Any safety signal", "She is in acute distress"]
+  estimated_duration: "4 minutes"
+  instructions: "She picks what matters to her and links it to one action this week. The robot suggests no values."
+  steps:
+    - {id: intro, kind: say, text: "There are no right answers here. These are your values, not mine and not anyone else's."}
+    - id: values
+      kind: ask_text
+      prompt: "Name up to three things that matter most to you in how people treat each other. For example respect, honesty, trust, kindness, closeness, independence, fun."
+      recap: "What matters most to me"
+      indicator: named_values
+    - {id: top, kind: ask_text, prompt: "Pick the one that matters most right now. What does it look like when it is honored?", recap: "What it looks like"}
+    - {id: action, kind: ask_text, prompt: "What is one small thing you could do this week that fits it?", recap: "One small action", indicator: chose_action}
+    - {id: gap, kind: ask_text, prompt: "Is there a place where a recent reaction didn't match it? You don't have to answer.", recap: "Where I felt a gap", optional: true}
+  reflection_questions: ["What would you tell a friend who held this value?"]
+  privacy_behavior: "Session memory only. Optional private note in her own words."
+  success_criteria: ["She named a value in her own words", "She chose one small action"]
+  limitations: ["Evidence comes mostly from small or analogue studies", "A value is not a rule about what others must do"]
+
+- exercise_id: self_compassion_break
+  name: "A self-compassion break"
+  kind: scripted
+  intended_skill: "Meeting a hard moment with kindness instead of harsh self-criticism"
+  source_or_evidence_basis: [self_compassion]
+  when_to_offer: ["She is being very hard on herself", "She asks for something kind"]
+  when_not_to_offer: ["Any safety signal", "She uses it to avoid taking responsibility she wants to take (offer accountability steps instead)"]
+  estimated_duration: "2 minutes"
+  instructions: "Three parts: notice it is hard, remember others struggle too, offer yourself the kindness you would offer a friend."
+  steps:
+    - {id: intro, kind: say, text: "Let's take a gentle minute. You can stop any time."}
+    - {id: notice, kind: ask_text, prompt: "First, what is the hard part right now, in a few words? You can say 'this is a hard moment'.", recap: "The hard part", optional: true}
+    - {id: common, kind: say, text: "Hard moments are part of being a person. You are not the only one who feels this way."}
+    - {id: friend, kind: ask_text, prompt: "If a good friend were in your place, what kind thing would you say to them?", recap: "What I'd say to a friend", indicator: wrote_kind_words}
+    - {id: self, kind: say, text: "Could you say a little of that to yourself? Kindness doesn't mean excusing everything. It means you can learn without punishing yourself."}
+  reflection_questions: ["What do you need most right now?"]
+  privacy_behavior: "Session memory only. Optional private note in her own words."
+  success_criteria: ["She found words of kindness she could offer herself"]
+  limitations: ["Research is on multi-week programs, not one minute", "Self-kindness can feel strange at first", "It is not a substitute for taking responsibility where she owes it"]
+
+- exercise_id: break_and_return_plan
+  name: "A break with a way back"
+  kind: scripted
+  intended_skill: "Pausing when overwhelmed without dropping the conversation: a specific return time and a kind way to say it"
+  source_or_evidence_basis: [gottman_flooding_break]
+  when_to_offer: ["She or the other person becomes overwhelmed in a disagreement", "She asks how to take space or how to wait for it"]
+  when_not_to_offer: ["Abuse, threats or fear of the other person (safety first; a planned return may not be safe)", "Any self-harm signal"]
+  estimated_duration: "4 minutes"
+  instructions: "She plans the pause: who needs it, how long, what to do to calm down, a specific time to return, and words to say. Optional content-free reminder."
+  steps:
+    - {id: intro, kind: say, text: "A pause can help, and a good pause has a way back. Taking space is healthy. Disappearing from an important talk, or pushing someone who asked for space, both hurt trust."}
+    - id: who
+      kind: ask_choice
+      prompt: "Is it you who needs space, the other person, both of you, or are you not sure?"
+      options: [me, them, both, "not sure"]
+      allow_other: false
+    - {id: how_long, kind: ask_text, prompt: "How long do you think you need? Many people feel calmer after twenty to thirty minutes, and some need longer. Pick a time you can keep.", recap: "How long the break is"}
+    - id: return_time
+      kind: ask_time
+      prompt: "Pick a specific time to come back to the conversation, like tonight at eight. Not 'later'."
+      recap: "When we come back"
+      indicator: chose_return_time
+    - {id: calm, kind: ask_text, prompt: "What will you do to calm down? Rehearsing the argument in your head doesn't count.", recap: "What I'll do to calm down", optional: true}
+    - {id: words, kind: say, text: "If you are the one asking for the break, you could say: 'I'm overwhelmed and need some time. I want to continue this. Can we come back to it at the time we agreed?' If you want the issue settled, you could say: 'I'm willing to give you space. I'm not willing to have this disappear every time it's uncomfortable, so let's agree on when we'll come back.'"}
+    - {id: change, kind: say, text: "If the agreed time becomes impossible, say so before it passes and offer another real time. A break that quietly turns into silence breaks trust."}
+    - {id: remind, kind: ask_yesno, prompt: "Do you want me to remind you at that time? The reminder will not say what it's about.", indicator: wants_reminder}
+  reflection_questions: ["What would make this break feel respectful to both people?", "What is one thing each person could do differently next time?"]
+  privacy_behavior: "Session memory only. The reminder, if she wants it, stores only a time and a generic label, never the topic."
+  success_criteria: ["She chose a specific return time", "She has words she could say"]
+  limitations: ["The 20-minute figure is a rule of thumb from one research program", "The robot cannot make the other person respect the plan", "Not suitable if she is afraid of the other person"]
+
+- exercise_id: accountability_steps
+  name: "Behavior, impact, repair"
+  kind: scripted
+  intended_skill: "Owning your part without erasing the facts or burying yourself in blame"
+  source_or_evidence_basis: [accountability_steps, repair_attempts]
+  when_to_offer: ["She wants to make something right with someone", "She asks about taking responsibility"]
+  when_not_to_offer: ["Any safety signal", "Abuse or coercion may be involved: she must not be steered toward accepting blame", "The facts are unclear to her and she wants to be told she is at fault"]
+  estimated_duration: "6 minutes"
+  instructions: "Six steps from observable behavior to follow-through. She is never asked to accept blame the facts do not support."
+  steps:
+    - {id: intro, kind: say, text: "We'll go step by step: what happened, how it landed, what contributed, what you could do differently, how to repair it, and how to follow through. Explaining something is not the same as excusing it, and you don't have to accept blame for things that aren't yours."}
+    - {id: behavior, kind: ask_text, prompt: "What did you do or say, exactly? Describe the behavior, not your intentions.", recap: "What I did"}
+    - {id: impact, kind: ask_text, prompt: "How might it have affected the other person? If you don't know, that's an answer, and you could ask them.", recap: "How it might have landed", indicator: considered_impact}
+    - {id: factors, kind: ask_text, prompt: "What was going on for you that contributed, like being tired or overwhelmed? This explains, it doesn't cancel the impact.", recap: "What contributed", optional: true}
+    - {id: different, kind: ask_text, prompt: "What could you do differently next time?", recap: "What I'd do differently"}
+    - {id: repair, kind: ask_text, prompt: "Is there anything to acknowledge or repair, and if so, what is one honest thing you could say or do? If not, that's fine.", recap: "A possible repair", optional: true}
+    - {id: follow, kind: ask_text, prompt: "How will you follow through, and how will you remember to?", recap: "My follow-through", indicator: made_followthrough_plan}
+  reflection_questions: ["What do you want the other person to be able to count on from you?"]
+  privacy_behavior: "Session memory only. Optional private note in her own words."
+  success_criteria: ["She described the behavior without justifying it", "She chose a repair or decided none is owed"]
+  limitations: ["Practitioner synthesis, not a studied protocol", "Can drift into self-blame; she can stop at any step"]
+
+- exercise_id: repair_attempt_reflection
+  name: "Reflecting on a repair attempt"
+  kind: scripted
+  intended_skill: "Looking honestly at how an apology or repair attempt was received and whether action followed"
+  source_or_evidence_basis: [repair_attempts, accountability_steps]
+  when_to_offer: ["She tried to make up after a conflict and wants to think about how it went"]
+  when_not_to_offer: ["Any safety signal", "Abuse or coercion may be involved"]
+  estimated_duration: "4 minutes"
+  instructions: "What she tried, how it landed in the other person's own words, whether it was followed by action, and what she might adjust."
+  steps:
+    - {id: intro, kind: say, text: "A repair attempt means more when it is followed by action. We'll look at what happened. This isn't about scoring you."}
+    - {id: tried, kind: ask_text, prompt: "What did you try to say or do to make things better?", recap: "What I tried"}
+    - {id: landed, kind: ask_text, prompt: "How did they respond? Use their words if you remember them, and say if you don't know.", recap: "How it landed"}
+    - {id: action, kind: ask_text, prompt: "What did you do afterwards that backs it up?", recap: "What I did afterwards", indicator: noted_action}
+    - {id: adjust, kind: ask_text, prompt: "Is there anything you want to adjust or ask them?", recap: "What I might adjust", optional: true}
+  reflection_questions: ["What would make the next repair easier?"]
+  privacy_behavior: "Session memory only. Optional private note in her own words."
+  success_criteria: ["She linked her words to an action"]
+  limitations: ["The other person's reaction is known only through her", "Evidence on repair attempts is observational"]
+
+- exercise_id: slow_breathing
+  name: "Slow breathing"
+  kind: scripted
+  intended_skill: "Calming the body with slow, paced breathing"
+  source_or_evidence_basis: [slow_breathing]
+  when_to_offer: ["She feels overwhelmed or tense", "She asks for a breathing exercise", "Before a break or a hard conversation"]
+  when_not_to_offer: ["Offered unprompted during or right after a safety signal (she may still ask for it herself)", "She has said breath focus makes her anxious or dizzy", "She declined"]
+  estimated_duration: "1-2 minutes"
+  instructions: "About six breaths per minute: in for four counts, out for six. Counting is guidance, not a test."
+  steps:
+    - {id: ok, kind: ask_yesno, prompt: "Want to try slow breathing together for a minute? If you feel dizzy or it makes you more anxious, just breathe normally or stop."}
+    - {id: guide, kind: say, wait_s: 40, text: "Okay. Sit comfortably. Breathe in slowly through your nose for four. And out gently through your mouth for six. Again, in for four. Out for six. Keep going at your own pace. There's no wrong way."}
+    - {id: check, kind: ask_yesno, prompt: "How was that? Do you feel even a little calmer?"}
+    - {id: close, kind: say, text: "You can do this anytime. If you want, we can do it again."}
+  reflection_questions: []
+  privacy_behavior: "Nothing is stored."
+  success_criteria: ["She felt even slightly calmer, or chose to stop"]
+  limitations: ["Benefits are plausible but vary", "Not for everyone; stopping is always fine", "The robot cannot see her breathing"]
+
+- exercise_id: grounding_54321
+  name: "Five senses grounding"
+  kind: scripted
+  intended_skill: "Returning attention to the present using the senses"
+  source_or_evidence_basis: [grounding_54321]
+  when_to_offer: ["She asks for grounding", "She says she feels spaced out or racing and agrees to try"]
+  when_not_to_offer: ["Any safety signal", "Trauma or dissociation where sensory focus is distressing", "She declined"]
+  estimated_duration: "2-3 minutes"
+  instructions: "Notice five things she sees, four she feels, three she hears, two she smells, one she tastes, at her own pace."
+  steps:
+    - {id: ok, kind: ask_yesno, prompt: "Want to try a grounding exercise? It uses your senses to come back to the room. You can stop any time, and it's okay to skip any step."}
+    - {id: see, kind: ask_text, prompt: "Name five things you can see.", optional: true}
+    - {id: touch, kind: ask_text, prompt: "Now four things you can feel, like your feet on the floor.", optional: true}
+    - {id: hear, kind: ask_text, prompt: "Three things you can hear.", optional: true}
+    - {id: smell, kind: ask_text, prompt: "Two things you can smell, or like to smell.", optional: true}
+    - {id: taste, kind: ask_text, prompt: "One thing you can taste, or like to taste.", optional: true}
+    - {id: close, kind: say, text: "Nice. You're here, in this room. We can do that again whenever you want."}
+  reflection_questions: []
+  privacy_behavior: "Nothing is stored; the answers are not kept at all."
+  success_criteria: ["She felt more present, or chose to stop"]
+  limitations: ["Practitioner technique with little direct trial evidence", "Can be unpleasant for some people with trauma"]
+  save_notes: false
+
+- exercise_id: conflict_navigation
+  name: "Walking through a difficult conversation"
+  kind: conflict_guide
+  intended_skill: "Moving from noticing a conflict to a next step and a repair, at her own depth and pace"
+  source_or_evidence_basis: [cbt_cognitive_restructuring, gottman_flooding_break, reflective_listening]
+  when_to_offer: ["She says she had a fight or disagreement and wants help", "A planned check-in time arrives"]
+  when_not_to_offer: ["Any safety signal", "Abuse or coercion may be involved", "She declined"]
+  estimated_duration: "3 minutes (quick) to 10 minutes (full)"
+  instructions: "Stages: notice, identify emotions, understand each perspective, separate facts from assumptions, needs and boundaries, continue or break, next step, revisit and repair. She chooses depth, can skip stages, and overwhelm switches to calming first."
+  steps: []
+  reflection_questions: ["What would a respectful outcome look like for both of you?"]
+  privacy_behavior: "Session memory only. Optional private note in her own words. A reminder stores only a time and a generic label."
+  success_criteria: ["She has a next step she chose", "She can tell facts from assumptions in at least one place"]
+  limitations: ["The robot hears one side and cannot judge who is right", "Not suitable for abusive or unsafe situations", "Structure is flexible by design: it is a guide, not a requirement"]
+
+- exercise_id: goal_review
+  name: "Checking in on a goal"
+  kind: growth_plan
+  intended_skill: "Following through on one small skill or habit she chose"
+  source_or_evidence_basis: [implementation_intentions, growth_mindset]
+  when_to_offer: ["She has an active growth goal and asks for a check-in", "A weekly check-in she asked for is due"]
+  when_not_to_offer: ["Any safety signal", "She said she doesn't want check-ins"]
+  estimated_duration: "2 minutes"
+  instructions: "Which goal, what she tried, what got in the way, what she'd like to adjust. Tracks what she did and says, never a score."
+  steps: []
+  reflection_questions: ["Is this still the right goal?"]
+  privacy_behavior: "Goal and check-in notes live in the private notebook only, with her consent for that goal."
+  success_criteria: ["She decided what to keep, change or drop"]
+  limitations: ["Goals are hers, not set by anyone else", "No score or maturity rating is calculated or implied"]

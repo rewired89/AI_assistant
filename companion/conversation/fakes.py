@@ -7,6 +7,8 @@ class FakeLanguageModel(LanguageModel):
     """Scripted model for tests. Each script item is a dict {"text","tool_calls"}, a str, an Exception to raise,
     or a callable(system, messages, tools) -> any of those. Records every call."""
 
+    is_local = True
+
     def __init__(self, script=None, default="Okay."):
         self.script, self.default, self.calls = list(script or []), default, []
 

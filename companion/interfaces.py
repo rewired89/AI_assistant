@@ -33,6 +33,9 @@ class DeviceTransport(ABC):
 
 
 class LanguageModel(ABC):
+    #: True only if prompts never leave this machine or the home network. Private reflections use no model unless True.
+    is_local: bool = False
+
     @abstractmethod
     def complete(self, system: str, messages: list[dict], tools: list[dict] | None = None) -> dict:
         """Return {"text": str, "tool_calls": [{"name": str, "arguments": dict}]}.

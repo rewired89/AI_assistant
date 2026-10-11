@@ -36,10 +36,12 @@ class DirectorConfig:
 class ProactiveDirector:
     def __init__(self, behavior: BehaviorEngine, conversation: ConversationEngine, pipeline: VoicePipeline,
                  clock: Callable[[], float], memory=None, state_store=None, config: DirectorConfig | None = None,
-                 rng: random.Random | None = None):
+                 rng: random.Random | None = None, psychology=None):
         self.behavior, self.conversation, self.pipeline, self.clock = behavior, conversation, pipeline, clock
         self.memory, self.state_store, self.cfg = memory, state_store, config or DirectorConfig()
         self.rng = rng or random.Random()
+        self.psychology = psychology
+        self._queued_followups: set[str] = set()
         self.stats: Counter = Counter()
         self.asleep = False
         self._sleep_reason: str | None = None
@@ -83,6 +85,8 @@ class ProactiveDirector:
                 self._stimuli.append((stim, {}))
 
     def _on_reply(self, reply) -> None:
+        if reply.interaction == "none":                     # safety and reflection turns never count as growth or play
+            return
         self._stimuli.append(("interaction", {"kind": reply.interaction or "conversation"}))
 
     # ---- loop ----------------------------------------------------------------------------
@@ -100,6 +104,7 @@ class ProactiveDirector:
         if (not self.asleep and self.pipeline.state is State.IDLE and now - self._last_idle >= self.cfg.idle_tick_s):
             self._last_idle = now
             self._handle(self.behavior.react("idle_tick", memory_refs=self._memory_refs(now)), now)
+        self._queue_followups(now)
         self._speak_pending(now)
         if self.state_store is not None and (saw_interaction or now - self._last_save >= self.cfg.save_interval_s):
             self.state_store.save(self.behavior.state)
@@ -138,15 +143,29 @@ class ProactiveDirector:
             else:
                 self.stats["spoken"] += 1
                 self.stats[f"spoken:{intent.kind}"] += 1
+                if intent.kind == "followup_due" and self.psychology is not None:
+                    self.psychology.note_followup_spoken(intent.data["fid"])
+                    self._queued_followups.discard(intent.data["fid"])
                 for g in intent.grounding:
                     if g.startswith("memory:"):
                         self._used[g[7:]] = now
         while self._pending and self._pending[0][0] < now:
-            self._pending.popleft()
+            _, old, _ = self._pending.popleft()
             self.stats["expired"] += 1
+            if old.kind == "followup_due":
+                self._queued_followups.discard(old.data["fid"])   # still due: it will be queued again
         if (self._composing is None and self._pending and not self.asleep and self.pipeline.state is State.IDLE):
             _, intent, style = self._pending.popleft()
             self._composing = (self._pool.submit(self.conversation.compose_intent, intent), intent, style)
+
+    def _queue_followups(self, now: float) -> None:
+        """Reminders she asked for (content-free). Spoken even in quiet mode, but never while asleep or busy."""
+        if self.psychology is None or self.asleep:
+            return
+        for f in self.psychology.due_followups():
+            if f["id"] not in self._queued_followups:
+                self._queued_followups.add(f["id"])
+                self._pending.append((now + self.cfg.pending_ttl_s, Intent("followup_due", tone="calm", data={"fid": f["id"]}), "calm"))
 
     def _memory_refs(self, now: float) -> list[str]:
         if self.memory is None or not self.cfg.speak_memories:

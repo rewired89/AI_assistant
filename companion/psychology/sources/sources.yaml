@@ -1,0 +1,177 @@
+# Evidence register for every technique the Psychological Growth Engine uses.
+# checked: "2026-10-11 secondary summaries" = I read web-search summaries, NOT the primary papers.
+#          "not checked" = written from general knowledge; verify before relying on it.
+# evidence_level: strong | moderate | limited | mixed | unestablished  (about THIS use, not the parent therapy)
+# Nothing here is medical advice. The engine is education and reflection support, not therapy.
+sources:
+  affect_labeling:
+    title: "Affect labeling (putting feelings into words)"
+    kind: research
+    evidence_level: mixed
+    summary: "Naming an emotion can reduce its intensity for some people in some situations (Lieberman and colleagues, 2007 onward)."
+    limits: "A 2018 narrative review frames it as implicit emotion regulation; a 2026 systematic review calls it a conditional strategy that varies by person and context; I found no clear large preregistered replication. Effects are modest and heterogeneous."
+    risks: "Low. Forced labeling can feel invalidating if the suggested word is wrong, so words are offered as guesses."
+    urls:
+      - https://journals.sagepub.com/doi/10.1177/1754073917742706
+      - https://www.accesson.kr/healthpsy/v.31/4/1147/59715
+    checked: "2026-10-11 secondary summaries"
+  emotional_granularity:
+    title: "Emotional granularity / differentiation"
+    kind: research
+    evidence_level: limited
+    summary: "People who distinguish emotions more finely (Barrett; Kashdan) tend to regulate better, mostly in correlational work."
+    limits: "Mostly correlational; no strong evidence that coaching granularity by itself changes outcomes."
+    risks: "Low."
+    urls: []
+    checked: "not checked"
+  cbt_cognitive_restructuring:
+    title: "Separating events from interpretations (thought-record style questions)"
+    kind: research
+    evidence_level: moderate
+    summary: "Cognitive restructuring is a core CBT component. In-session restructuring is associated with better therapy outcomes (4-study meta-analysis, r = .35)."
+    limits: "That finding is correlational and based on few studies; thought records vary so much in format that pooled effects are hard to compute. A short self-guided version delivered by a robot has not been tested."
+    risks: "Can sound like 'your feelings are wrong' if done badly. The script says feelings are real even when an interpretation turns out to be inaccurate."
+    urls:
+      - https://pmc.ncbi.nlm.nih.gov/articles/PMC10440210/
+      - https://jamanetwork.com/journals/jamapsychiatry/article-abstract/2832696
+    checked: "2026-10-11 secondary summaries"
+  reflective_listening:
+    title: "Reflective listening (Rogers; motivational interviewing OARS)"
+    kind: framework
+    evidence_level: moderate
+    summary: "Accurate reflection of what another person said and felt is a staple of client-centered therapy and motivational interviewing."
+    limits: "Evidence is for trained use in clinical settings; practicing it with a robot is untested."
+    risks: "Low. Practice partner is the robot, not the real person."
+    urls: []
+    checked: "not checked"
+  gottman_flooding_break:
+    title: "Taking a break when flooded, then returning (Gottman)"
+    kind: research
+    evidence_level: limited
+    summary: "Gottman's lab reports that overwhelmed partners (high heart rate) do poorly in discussion and that roughly 20 or more minutes apart, doing something soothing, helps."
+    limits: "The 20-minute figure comes mostly from the Gottman Institute's own summaries; sources quote 20, 20-40 or 20-30 minutes; lab arguments on cue differ from real fights; I could not check the primary papers. Treat the number as a rule of thumb, not a measured requirement."
+    risks: "A pause can become avoidance if no return time is agreed, and can feel like abandonment to the other person; the exercise insists on a specific return time and on respecting a request for space. Not appropriate when someone is unsafe."
+    urls:
+      - https://www.gottman.com/blog/how-stress-affects-relationships/
+    checked: "2026-10-11 secondary summaries"
+  gottman_soft_startup:
+    title: "Gentle start-up and repair attempts (Gottman)"
+    kind: research
+    evidence_level: limited
+    summary: "Observational work links harsh start-ups with worse discussion outcomes and successful repair attempts with better ones."
+    limits: "Observational, from one research program with a commercial arm; causation is not established. Popular numbers ('5 to 1 ratio') are not used here."
+    risks: "Can be used to police tone; the engine applies it only to the user's own wording, never to the other person."
+    urls:
+      - https://gottman.com/about/research/couples/
+    checked: "2026-10-11 secondary summaries"
+  nvc:
+    title: "Observation, feeling, need, request (Nonviolent Communication, Rosenberg)"
+    kind: framework
+    evidence_level: limited
+    summary: "A four-part way to phrase a hard message without blame."
+    limits: "Reviews find mostly small quasi-experimental studies on empathy and conflict skills, no randomized trials, with methodological weaknesses."
+    risks: "Formulaic phrasing can sound scripted; used as a drafting aid she edits, never as a rule."
+    urls:
+      - https://www.cnvc.org/learn/research/nonviolent-communication-a-literature-review
+    checked: "2026-10-11 secondary summaries"
+  values_clarification:
+    title: "Values clarification (ACT)"
+    kind: research
+    evidence_level: limited
+    summary: "Naming what matters to you supports committed action in ACT; values exercises show positive effects in small and analogue studies."
+    limits: "A systematic review of 17 studies found positive effects across varied designs; I found no dedicated meta-analysis; many trials are analogue."
+    risks: "Low. The robot never tells her what her values should be."
+    urls:
+      - https://contextualscience.org/publications/experimental_comparison_two_acceptance_commitment_therapy_act_values_exercises
+    checked: "2026-10-11 secondary summaries"
+  self_compassion:
+    title: "Self-compassion break (Neff)"
+    kind: research
+    evidence_level: moderate
+    summary: "Self-compassion interventions show moderate effects on self-compassion and stress/anxiety/depression in RCT meta-analyses (g about 0.5-0.75)."
+    limits: "Effects are much larger against wait-lists than against active controls (d .86 vs .19 in one meta-analysis); possible publication bias; the evidence is for multi-week programs, not a one-minute prompt."
+    risks: "Some people find self-kindness uncomfortable at first; she can stop."
+    urls:
+      - https://acuresearchbank.acu.edu.au/item/87545/self-compassion-interventions-and-psychosocial-outcomes-a-meta-analysis-of-rcts
+      - https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10091769/
+    checked: "2026-10-11 secondary summaries"
+  implementation_intentions:
+    title: "If-then plans (implementation intentions)"
+    kind: research
+    evidence_level: moderate
+    summary: "Gollwitzer and Sheeran's 2006 meta-analysis (94 tests) reports d = 0.65 for goal attainment when people form specific if-then plans."
+    limits: "Figure taken from citing sources, not the paper; effect sizes differ by domain; a related technique (mental contrasting + IIs) showed g about 0.34 in a later meta-analysis. Works best for simple, concrete behaviors."
+    risks: "Low. Goals must be her own, not set by someone else."
+    urls:
+      - https://stafforini.com/works/gollwitzer-2006-implementation-intentions-and/
+      - https://cancercontrol.cancer.gov/brp/research/constructs/implementation-intentions
+    checked: "2026-10-11 secondary summaries"
+  slow_breathing:
+    title: "Slow paced breathing (about 6 breaths per minute)"
+    kind: research
+    evidence_level: moderate
+    summary: "Breathing near 0.1 Hz maximizes heart-rate variability and baroreflex gain; a 2022 systematic review and meta-analysis examined effects on HRV."
+    limits: "Benefits for stress and anxiety look plausible but are heterogeneous, with small samples and weak controls in many studies; I did not read the pooled results."
+    risks: "Dizziness or lightheadedness is possible; people with breathing or heart conditions, or for whom breath focus triggers panic, should skip it. The script offers a stop at any time and never forces a count."
+    urls:
+      - https://qastaffprofiles.bournemouth.ac.uk/display/journal-article/368158
+      - https://link.springer.com/article/10.1007/s12671-023-02294-2
+    checked: "2026-10-11 secondary summaries"
+  grounding_54321:
+    title: "5-4-3-2-1 sensory grounding"
+    kind: practitioner
+    evidence_level: unestablished
+    summary: "Widely taught by clinicians as a way to come back to the present."
+    limits: "I found practitioner handouts and no trials or contraindication guidance; sense order differs between sources."
+    risks: "Sensory focus can be distressing for some people with trauma or dissociation. It is offered only when she asks or agrees, she can stop at once, and it is not offered during any risk signal."
+    urls:
+      - https://www.king.edu/wp-content/uploads/2025/06/Grounding-Techniques.pdf
+    checked: "2026-10-11 secondary summaries"
+  accountability_steps:
+    title: "Behavior, impact, contributing factors, change, repair, follow-through"
+    kind: practitioner
+    evidence_level: unestablished
+    summary: "A six-step reflection that separates explanation from justification and intention from impact."
+    limits: "Design synthesis written for this project from common repair and accountability practice. No study of this exact sequence."
+    risks: "Can turn into self-blame. The script never asks her to accept blame where facts are unclear and lets her stop at any step."
+    urls: []
+    checked: "not checked"
+  repair_attempts:
+    title: "Reflecting on a repair attempt"
+    kind: research
+    evidence_level: limited
+    summary: "Repair attempts that land (and are followed by action) are linked to better outcomes in observational couple research."
+    limits: "Observational (Gottman program); small sample sizes in many studies."
+    risks: "Low."
+    urls:
+      - https://gottman.com/about/research/couples/
+    checked: "2026-10-11 secondary summaries"
+  attachment_education:
+    title: "Attachment theory as educational background"
+    kind: framework
+    evidence_level: mixed
+    summary: "Adult attachment is usually described by two dimensions (anxiety and avoidance); whether it is better seen as types or dimensions is still debated."
+    limits: "Self-report quizzes are not diagnostic. The engine never assigns or reports an attachment style; it may explain the ideas only if she asks."
+    risks: "Labels can become identities or weapons. No labels are produced or stored."
+    urls:
+      - https://pmc.ncbi.nlm.nih.gov/articles/PMC8266088
+    checked: "2026-10-11 secondary summaries"
+  growth_mindset:
+    title: "Growth mindset"
+    kind: research
+    evidence_level: mixed
+    summary: "The belief that abilities can change; school-based interventions show small average effects."
+    limits: "Large-scale evidence is mixed and effects are small; not checked in this session. Used only as gentle framing ('this is a skill you can practice'), not as a promise."
+    risks: "Can be misused to blame people for not changing."
+    urls: []
+    checked: "not checked"
+  chatbot_risks:
+    title: "Known failure modes of AI mental-health chat"
+    kind: policy
+    evidence_level: limited
+    summary: "Commentary and early evaluations list missed suicidal crises, validating harmful beliefs (sycophancy), hallucination and emotional dependency."
+    limits: "Mostly policy analysis and secondary reports (Georgetown Tech Institute, JAMIA-linked framework, a summary of Stanford work); I did not verify the original studies or the quoted figures."
+    risks: "This is why crisis handling is scripted and runs before any model, replies are filtered, and the engine encourages real-world support instead of itself."
+    urls:
+      - https://www.law.georgetown.edu/tech-institute/research-insights/insights/reduce-ai-sycophancy-risks/
+    checked: "2026-10-11 secondary summaries"

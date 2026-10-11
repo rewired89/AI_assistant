@@ -27,7 +27,7 @@ MOOD_VOICE = {"sleeping": "whisper", "sleepy": "sleepy", "playful": "excited", "
 PROACTIVE = {"never": (0, 0, 0.0), "rare": (6 * 3600, 1, 0.15), "occasional": (3 * 3600, 3, 0.3),
              "frequent": (3600, 6, 0.5)}
 INTENT_KINDS = {"greet", "greet_after_battery_saving", "curious_question", "play_invite", "share_interest",
-                "offer_save_battery", "milestone", "comfort_touch_reply"}
+                "offer_save_battery", "milestone", "comfort_touch_reply", "followup_due"}
 NO_GUILT = {"mention_absence": False, "express_distress": False, "ask_for_attention": False}
 
 

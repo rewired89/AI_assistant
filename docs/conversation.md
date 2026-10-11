@@ -22,3 +22,6 @@ Psychology mode routing, persisted conversation history, token budgeting by real
 - Voice turns feed the tamagotchi through `Reply.interaction` (play/teach/explore/conversation, from keyword rules; wrong guesses are cheap because of caps and diminishing returns). Device sleep/wake drives the creature's sleeping state, so energy recovers while the robot naps.
 - Known gap: a robot that is never put to sleep slowly loses energy and (by design) stops speaking first once energy is below 0.3, though it still answers. Idle auto-nap (`idle_sleep_seconds`) is stored on the device but the simulator does not act on it.
 - Not covered: real model behavior (only scripted fakes), timing on a real clock, CharacterState access from the composing thread is lock-free (reads only), growth beyond conversation depends on keyword classification.
+
+## Safety gate and reflection
+Every turn passes `SafetyGate` first (see `psychology-design.md`). Reflection turns bypass the model, history, memory and growth credit. General chat about feelings still uses the base output filter only; the psychology validator is stricter and applies in listening mode.

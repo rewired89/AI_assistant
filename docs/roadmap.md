@@ -9,6 +9,7 @@
 - [~] Phase 6: tamagotchi state model + behavior engine done (tested); onboarding done (tested, scripted); habit recognition pending
 - [~] Phase 7 memory: store, vault, retention, extraction rules done; LLM extractor, review UI pending
 - [~] Phase 8 voice: pipeline + fakes done and tested (sim, loopback TLS); LLM responder + proactive speech done against fakes + stub server; real STT/TTS/LLM runs, wake word pending
+- [~] Phase 9 psychology engine: implemented + synthetic-scenario tests; NEEDS clinician review before real use
 - [ ] Phase 6 rest, 7 memory, 8 AI + voice, 9 psychology, 10 personality tuning, 11 art, 12 Cubone on same core
 
 Next concrete steps: (1) board arrives: fill `hardware.md`, dump flash; (2) WebSocket+TLS transport with the same tests; (3) tamagotchi state model with bounded decay and persistence tests; (4) memory store with consent and deletion.

@@ -39,6 +39,7 @@ class OllamaLanguageModel(LanguageModel):
             raise ValueError("base_url must be http(s)://host[:port]")
         if not allow_remote and not _is_local(u.hostname):
             raise ValueError(f"{u.hostname} is not a local/private address; pass allow_remote=True to send conversations off-network")
+        self.is_local = _is_local(u.hostname)
         self.model, self.base, self.timeout = model, base_url.rstrip("/"), timeout_s
         self.temperature, self.max_tokens = temperature, max_tokens
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))   # never via env proxies

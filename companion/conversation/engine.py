@@ -49,6 +49,7 @@ PURPOSE = {
     "milestone": "happily say you have grown into a {stage_word}",
     "comfort_touch_reply": "react happily to being gently touched",
 }
+SCRIPTED_ONLY = {"followup_due"}          # never model-written: must stay content-free
 QUESTION_KINDS = {"curious_question", "play_invite", "offer_save_battery", "share_interest"}
 MAX_PROACTIVE_WORDS = 30
 YES = {"yes", "yeah", "yep", "sure", "please", "okay", "ok", "correct", "right"}
@@ -73,10 +74,12 @@ class ConversationEngine:
     def __init__(self, llm: LanguageModel, personality_cfg: Callable[[], dict], state: CharacterState,
                  clock: Callable[[], float], memory=None, user_name: Callable[[], str | None] = lambda: None,
                  config: EngineConfig | None = None, tz: tzinfo = timezone.utc,
-                 on_sensitive: Callable[[dict], None] | None = None, dialogue: LinePicker | None = None):
+                 on_sensitive: Callable[[dict], None] | None = None, dialogue: LinePicker | None = None,
+                 safety=None, psychology=None):
         self.llm, self.cfg_fn, self.state, self.clock, self.memory = llm, personality_cfg, state, clock, memory
         self.user_name, self.cfg, self.tz, self.on_sensitive = user_name, config or EngineConfig(), tz, on_sensitive
         self.dialogue = dialogue or LinePicker(load_templates(None))
+        self.safety, self.psychology = safety, psychology      # SafetyGate / PsychologyEngine (optional)
         self.canary = "tok-" + uuid.uuid4().hex
         self.history: deque = deque(maxlen=self.cfg.history_turns * 2)    # RAM only, never persisted
         self._confirm: dict | None = None
@@ -92,6 +95,15 @@ class ConversationEngine:
     # ---- entry point ----------------------------------------------------------------
     def respond(self, utterance: str) -> Reply:
         self._turn += 1
+        if self.safety is not None:                            # always first, whatever mode we are in: fixed text, no model, nothing kept
+            scripted = self.safety.check(utterance)
+            if scripted:
+                self._confirm = None
+                return Reply(scripted, "calm", interaction="none")
+        if self.psychology is not None:
+            pr = self.psychology.handle(utterance, screened=True)
+            if pr is not None:                                  # private: not added to history, memory or growth
+                return Reply(pr.text, pr.style, interaction="none")
         answered = self._answer_confirmation(utterance)
         if answered:
             return answered
@@ -253,7 +265,7 @@ class ConversationEngine:
         facts = [speechify(f"{(r.get('key') or 'note').replace('_', ' ')}: {r['value']}", 200) for r in records]
         fields = {"name": self.user_name() or "friend", "fact": speechify(records[0]["value"], 80) if records else "",
                   "stage_word": STAGE_WORDS.get(intent.data.get("stage", ""), "bigger fox")}
-        text = self._proactive_llm(intent, rel, facts, fields)
+        text = None if intent.kind in SCRIPTED_ONLY else self._proactive_llm(intent, rel, facts, fields)
         if text is None:
             self.stats["proactive_fallback"] += 1
             text = self.dialogue.pick(intent.kind, rel).format(**fields)

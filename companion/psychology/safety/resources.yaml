@@ -1,0 +1,14 @@
+# Human-help resources by region. VERIFY every number before shipping and re-check yearly.
+# Checked 2026-10-11 via secondary search summaries only (several university and hospital pages agreed).
+# One search result listed 1-800-799-7233 for a different service, so confirm at thehotline.org.
+# The user's region is not known to the project: default is "US" because the example timezone in the spec was
+# US Eastern, but this MUST be confirmed with her (psychology settings: region).
+regions:
+  US:
+    emergency: "911"
+    suicide_crisis: "call or text 988, the Suicide and Crisis Lifeline"
+    domestic_violence: "call 1-800-799-7233 or text START to 88788, the National Domestic Violence Hotline"
+  GENERIC:
+    emergency: "your local emergency number"
+    suicide_crisis: "a local crisis line or your doctor"
+    domestic_violence: "a local domestic violence support line"

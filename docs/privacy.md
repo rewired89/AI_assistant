@@ -6,3 +6,5 @@ Status: ordinary memory and the reflection vault are implemented (`companion/mem
 Gaps: no encryption at rest (needs SQLCipher or OS-level disk encryption), no sentiment/semantic retrieval (lexical only), no UI for review yet, sensitive-term screen is a crude keyword list that will miss things.
 
 Conversation (LLM): the default adapter only talks to loopback/private addresses and ignores proxy env vars; sending conversations off-network needs `allow_remote=True` in code. The prompt receives her name and up to 5 retrieved active memories (never pending ones, never reflections). Chat history stays in RAM (last 6 exchanges) and is not persisted. Anything the model proposes to remember is checked against her own words; ungrounded proposals wait for her yes.
+
+Psychology: reflection content lives in RAM for the session; the private vault gets only what she approves, in her own words. Settings and reminders hold no content. Listening mode is available only to a model marked local. A crisis message is answered with fixed text, never sent to a model and never stored. No path exists to give another person her notes.
