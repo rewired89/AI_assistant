@@ -44,6 +44,9 @@
 | `companion/speech/engines.py` | `WhisperRecognizer` (faster-whisper, local), `EspeakSynthesizer` (espeak-ng subprocess), wav parse + resample |
 | `tools/fetch_models.py` | One-time Whisper model download |
 | `tests/companion/test_speech_engines.py` | Engine adapters: stubbed process/model, real espeak through the pipeline |
+| `companion/memory/crypto.py` | `FieldCipher`: AES-GCM field encryption + HMAC key index (scrypt/HKDF) |
+| `tools/memory_crypt.py` | CLI: encrypt an existing memory file (verified copy, then swap) |
+| `tests/memory/test_encryption.py` | Encrypted stores: on-disk secrecy, tamper/swap detection, passphrase rules, migration |
 | `companion/security/rotation.py` | `rotate_device_key` (resume-safe) |
 | `tools/provision.py` | CLI: create (bundle) / list / revoke |
 | `companion/application/ws_transport.py` | `WebSocketHostTransport` (wss server in a thread, `DeviceTransport`), `mac_gate`, ssl context helpers, `TokenBucket` |
