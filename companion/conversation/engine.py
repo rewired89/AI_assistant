@@ -25,11 +25,32 @@ from ..memory.store import _tokens
 from ..scheduling.sleep import AmbiguousTime, ClockError, build_sleep_payload, resolve_wake
 from ..speech.pipeline import Reply
 from ..tamagotchi.state import CharacterState
+from ..behavior.engine import Intent
+from .dialogue import LinePicker, STAGE_WORDS, load_templates
 from .prompt import build_system_prompt
 from .safety import speechify, violations
 from .tools import (SLEEP_WORDS, TOOL_SPECS, Remember, RequestSleep, ShowEmotion, parse_tool_calls)
 
 SAFE_FALLBACK = "I'm not sure how to put that. Could you ask me another way?"
+ABSENCE = re.compile(r"\b(haven'?t seen you|been (away|gone)|long time|missed you|miss you|where (were|have) you|"
+                     r"for (hours|days|ages|so long)|welcome back|you('re| are) back|finally)\b", re.I)
+ASSERTS_ABOUT_HER = re.compile(r"\b(i know (that )?you|you (were|went|did|had|have been|'ve been|just|already|must have|probably)|"
+                               r"you('re| are) (always|never))\b", re.I)
+PLAY = re.compile(r"\b(let'?s play|wanna play|want to play|play (a )?(game|something))\b", re.I)
+TEACH = re.compile(r"\b(did you know|let me teach|i'?ll teach|i want to teach|remember that|learn (that|about))\b", re.I)
+EXPLORE = re.compile(r"\b(tell me about|what is|what are|how does|how do|why do|why is)\b", re.I)
+PURPOSE = {
+    "greet": "greet her warmly (your bond with her is {relationship})",
+    "greet_after_battery_saving": "say you are awake again after a nap to save battery",
+    "curious_question": "ask ONE curious open question about her interests; do not assume anything about her day",
+    "play_invite": "invite her to play a simple game or do something silly together",
+    "share_interest": "bring up this thing she told you, in one friendly sentence or question",
+    "offer_save_battery": "say your battery is getting low and offer to take a nap to save power; sound calm, not distressed",
+    "milestone": "happily say you have grown into a {stage_word}",
+    "comfort_touch_reply": "react happily to being gently touched",
+}
+QUESTION_KINDS = {"curious_question", "play_invite", "offer_save_battery", "share_interest"}
+MAX_PROACTIVE_WORDS = 30
 YES = {"yes", "yeah", "yep", "sure", "please", "okay", "ok", "correct", "right"}
 NO = {"no", "nope", "don't", "dont", "never"}
 
@@ -52,15 +73,17 @@ class ConversationEngine:
     def __init__(self, llm: LanguageModel, personality_cfg: Callable[[], dict], state: CharacterState,
                  clock: Callable[[], float], memory=None, user_name: Callable[[], str | None] = lambda: None,
                  config: EngineConfig | None = None, tz: tzinfo = timezone.utc,
-                 on_sensitive: Callable[[dict], None] | None = None):
+                 on_sensitive: Callable[[dict], None] | None = None, dialogue: LinePicker | None = None):
         self.llm, self.cfg_fn, self.state, self.clock, self.memory = llm, personality_cfg, state, clock, memory
         self.user_name, self.cfg, self.tz, self.on_sensitive = user_name, config or EngineConfig(), tz, on_sensitive
+        self.dialogue = dialogue or LinePicker(load_templates(None))
         self.canary = "tok-" + uuid.uuid4().hex
         self.history: deque = deque(maxlen=self.cfg.history_turns * 2)    # RAM only, never persisted
         self._confirm: dict | None = None
         self._turn = 0
         self._last_ask_turn = -999
-        self.stats = {"blocked_replies": 0, "rejected_tool_calls": 0, "ungrounded": 0}
+        self.stats = {"blocked_replies": 0, "rejected_tool_calls": 0, "ungrounded": 0, "proactive_llm": 0,
+                      "proactive_fallback": 0}
 
     def reset_history(self) -> None:
         self.history.clear()
@@ -91,9 +114,21 @@ class ConversationEngine:
                 self._remember(act, utterance, reply)
         for cand in extract_candidates(utterance):          # deterministic backstop for plain statements
             self._store_candidate(cand, utterance)
+        reply.interaction = self._classify(utterance, actions)
         self.history.append({"role": "user", "content": utterance[:300]})
         self.history.append({"role": "assistant", "content": reply.text[:300]})
         return reply
+
+    @staticmethod
+    def _classify(utterance: str, actions: list) -> str:
+        """Rough growth category from her words. Mistakes are cheap: growth has diminishing returns and daily caps."""
+        if PLAY.search(utterance):
+            return "play"
+        if TEACH.search(utterance) or any(isinstance(a, Remember) and a.category == "semantic" for a in actions):
+            return "teach"
+        if EXPLORE.search(utterance):
+            return "explore_topic"
+        return "conversation"
 
     # ---- model call with output validation ----------------------------------------------
     def _ask_model(self, system: str, messages: list[dict]) -> tuple[str, list]:
@@ -205,3 +240,70 @@ class ConversationEngine:
         day = "" if wake.date() == now.date() else "tomorrow at " if wake.date() == (now + timedelta(days=1)).date() \
             else wake.strftime("%A at ")
         return f"Okay, I'll nap until {day}{clock}."
+
+    # ---- proactive speech -----------------------------------------------------------------------
+    def compose_intent(self, intent: Intent, relationship: str | None = None) -> Reply | None:
+        """Words for a behavior Intent. Never raises: if the model is down or breaks a rule the scripted line
+        is used. Returns None when the intent can no longer be spoken (its memory was deleted or disabled).
+        The model sees only the facts in intent.grounding; no tools are offered; absence talk is rejected."""
+        rel = relationship or self.state.relationship_state
+        records = self._resolve(intent)
+        if records is None:
+            return None
+        facts = [speechify(f"{(r.get('key') or 'note').replace('_', ' ')}: {r['value']}", 200) for r in records]
+        fields = {"name": self.user_name() or "friend", "fact": speechify(records[0]["value"], 80) if records else "",
+                  "stage_word": STAGE_WORDS.get(intent.data.get("stage", ""), "bigger fox")}
+        text = self._proactive_llm(intent, rel, facts, fields)
+        if text is None:
+            self.stats["proactive_fallback"] += 1
+            text = self.dialogue.pick(intent.kind, rel).format(**fields)
+        else:
+            self.stats["proactive_llm"] += 1
+        text = speechify(text, 300)
+        self.history.append({"role": "assistant", "content": text[:300]})
+        tone = intent.tone if intent.tone in ("normal", "happy", "excited", "sleepy", "sad", "surprised",
+                                              "affectionate", "calm", "whisper") else "normal"
+        return Reply(text, tone)
+
+    def _resolve(self, intent: Intent) -> list[dict] | None:
+        """Memory records an intent is grounded in, or None if any is gone (deleted, disabled, expired)."""
+        out = []
+        for g in intent.grounding:
+            if g.startswith("memory:"):
+                rec = self.memory.get(g[7:]) if self.memory is not None else None
+                if rec is None:
+                    return None
+                out.append(rec)
+        return None if intent.kind == "share_interest" and not out else out
+
+    def _proactive_llm(self, intent: Intent, rel: str, facts: list[str], fields: dict) -> str | None:
+        purpose = PURPOSE[intent.kind].format(relationship=rel, stage_word=fields["stage_word"])
+        cfg = self.cfg_fn()
+        now = datetime.fromtimestamp(self.clock(), self.tz)
+        system = build_system_prompt(cfg, self.state.mood, rel, self.state.stage, self.user_name(), [], self.canary,
+                                     now.strftime("%A %H:%M"))
+        task = ("\nTask: you speak first now. Say ONE short spoken line (at most 25 words) to " + purpose + "."
+                + (" Facts you may rely on: " + "; ".join(f'"{f}"' for f in facts) + "." if facts else
+                   " You have no facts to rely on.")
+                + " Do not state anything else as fact: nothing about what she did, where she was, how long she has been"
+                  " away, the weather or events. Never mention her absence. " + (
+                    "End with one question." if intent.kind in QUESTION_KINDS else "Do not ask a question."))
+        try:
+            out = self.llm.complete(system + task, [*self.history, {"role": "user", "content": "(it is your turn to speak first)"}], None)
+            raw = out.get("text", "")
+            if not isinstance(raw, str):
+                return None
+        except Exception:
+            return None
+        text = speechify(raw, 300)
+        words = len(text.split())
+        ok = (text and words <= MAX_PROACTIVE_WORDS and not violations(raw, self.canary) and not ABSENCE.search(text)
+              and not ASSERTS_ABOUT_HER.search(text)
+              and text.count("?") <= 1)
+        if ok and intent.kind in QUESTION_KINDS and "?" not in text:
+            ok = False
+        if ok and intent.kind not in QUESTION_KINDS and "?" in text:
+            ok = False
+        if ok and intent.kind == "share_interest":   # must actually be about the remembered thing
+            ok = bool(set(_tokens(fields["fact"])) & set(_tokens(text)))
+        return text if ok else None

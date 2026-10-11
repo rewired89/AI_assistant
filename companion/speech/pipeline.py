@@ -43,6 +43,7 @@ class Reply:
     style: str = "normal"
     animation: str | None = None            # one-shot emotion shown after speaking (validated against the protocol enum)
     after_speech: tuple = ()                # ((protocol_type, payload), ...) sent only after the speech finished
+    interaction: str | None = None          # growth category of the turn (conversation/teach/play/explore_topic)
 
 
 class Responder(Protocol):
@@ -102,6 +103,7 @@ class VoicePipeline:
         self.log: deque = deque(maxlen=200)   # (state, note) only; never content
         self._presses = 0
         self._device_sleeping = False
+        self.on_reply: Callable[[Reply], None] | None = None   # told about each model reply (no audio, no transcript)
         self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="voice")
         self._cap: Capture | None = None
         self._det: EndpointDetector | None = None
@@ -116,11 +118,11 @@ class VoicePipeline:
         self._abort_all()
         self._pool.shutdown(wait=False, cancel_futures=True)
 
-    def speak(self, text: str, style: str = "normal") -> bool:
+    def speak(self, text: str, style: str = "normal", reply: Reply | None = None) -> bool:
         """Host-initiated speech (onboarding prompts, proactive intents). Never opens the microphone."""
         if self.state is not State.IDLE:
             return False
-        self._start_speaking(text, style)
+        self._start_speaking(text, style, reply)
         return self.state is State.SPEAKING
 
     def offer_onboarding(self, now: float, quiet: bool = False) -> bool:
@@ -319,6 +321,11 @@ class VoicePipeline:
                 self.stats["reply_errors"] += 1
                 self._note(f"reply_error:{type(e).__name__}")
                 return self._start_speaking(self.lines["trouble_thinking"], "calm")
+            if self.on_reply is not None:
+                try:
+                    self.on_reply(reply)
+                except Exception as e:
+                    self._note(f"on_reply_failed:{type(e).__name__}")
             return self._start_speaking(reply.text[: self.cfg.max_reply_chars], reply.style, reply)
         if self._timed_out(self.cfg.reply_timeout_s):
             self.stats["reply_timeouts"] += 1

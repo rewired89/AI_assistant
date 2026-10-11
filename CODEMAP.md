@@ -20,6 +20,8 @@
 | `companion/storage.py` | `ChecksumJSON` atomic checksummed JSON (used by onboarding; older stores have their own copies) |
 | `companion/application/onboarding.py` | `Onboarding` flow: core questions, paced optional steps, answer parsing, effects, device sync; `load_copy`, `parse_name` |
 | `companion/application/onboarding_default.yaml`, `species/*/onboarding.yaml` | Scripted copy + option keywords (species deep-merges over default) |
+| `companion/application/proactive.py` | `ProactiveDirector.tick()`: stimuli/idle -> Intents -> composed speech; pending queue with TTL; memory reuse; periodic state save |
+| `companion/conversation/dialogue.py`, `species/*/dialogue.yaml` | Scripted line per Intent kind (fallback + no-LLM mode), validated placeholders, `LinePicker` |
 | `companion/conversation/engine.py` | `ConversationEngine.respond()` -> `Reply`; confirmations, memory decisions, sleep handling, history (RAM) |
 | `companion/conversation/{prompt,safety,tools}.py` | System prompt builder; output validators + `speechify`; tool specs + `parse_tool_calls` |
 | `companion/conversation/{ollama,fakes}.py` | Local-only Ollama adapter; scripted `FakeLanguageModel` |
@@ -34,6 +36,7 @@
 | `companion/application/clock.py` | `SystemClock` |
 | `simulator/ws_link.py` | `DeviceLink`: simulated device dials host over wss, reconnect/backoff, offline ticking, sleep closes socket |
 | `tools/gen_certs.py` | Private CA + server cert generator (ECDSA P-256), cross-platform |
+| `tests/companion/test_proactive.py` | Director + compose_intent end to end with sim device and voice pipeline |
 | `tests/companion/test_conversation.py`, `test_conversation_voice.py` | Safety/tools/prompt/engine/Ollama stub; LLM inside the voice pipeline |
 | `tests/companion/test_voice_pipeline.py`, `test_speech_basics.py`, `tests/integration/test_voice_wss.py` | Voice turns end to end (sim + real TLS), cancel/barge-in, failures, privacy |
 | `tests/protocol/test_audio_frames.py`, `tests/firmware/test_audio_sim.py`, `tests/integration/test_wss_audio.py` | Frame format + fuzz; sim capture/playback rules; audio over real TLS |

@@ -1,0 +1,7 @@
+intents:
+  greet:
+    new: ["Hello."]
+    familiar: ["Hello {name}."]
+    close: ["Hello {name}."]
+  curious_question:
+    - "Is there anything you want help with?"

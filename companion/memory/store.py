@@ -252,6 +252,15 @@ class _Base(MemoryStoreABC):
         scored.sort(key=lambda t: -t[0])
         return [dict(self._out(r), score=round(s, 4)) for s, r in scored[:limit]]
 
+    def get(self, memory_id: str) -> dict | None:
+        """One active memory by id, or None (missing, deleted, pending, disabled category, or expired)."""
+        row = self.db.execute("SELECT * FROM memories WHERE id=? AND status='active'", (memory_id,)).fetchone()
+        if row is None or not self.settings()[row["category"]]["enabled"]:
+            return None
+        if row["expires_at"] is not None and row["expires_at"] <= self.clock():
+            return None
+        return self._out(row)
+
     def export(self) -> str:
         return json.dumps({"user_id": self.user_id, "exported_at": self.clock(), "settings": self.settings(),
                            "memories": self.list()}, indent=2, sort_keys=True)
@@ -266,7 +275,7 @@ def _locked(fn):
 
 
 for _name in ("set_enabled", "set_retention", "settings", "add", "confirm", "update", "delete", "clear",
-              "purge_expired", "list", "search", "export"):
+              "purge_expired", "list", "search", "export", "get"):
     setattr(_Base, _name, _locked(getattr(_Base, _name)))
 
 

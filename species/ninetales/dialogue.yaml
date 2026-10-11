@@ -1,0 +1,8 @@
+intents:
+  greet:
+    new: ["Hello! I'm Nine Tails, and I'm so happy to meet you!"]
+    familiar: ["Hi {name}! Yay, you're here!", "{name}! Hello hello!"]
+    close: ["{name}! I'm so happy you're here!", "Hi {name}! Yay!"]
+  curious_question:
+    - "Ooh, can I ask you something? What's a thing you really like?"
+    - "I'm curious, what made you smile recently?"
