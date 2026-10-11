@@ -1,12 +1,12 @@
 """Look at, correct and delete what the companion remembers. Run it while the companion is stopped.
 
-    python -m tools.memory_review --config config\\companion.yaml list [--pending]
-    python -m tools.memory_review --config config\\companion.yaml confirm <id>
-    python -m tools.memory_review --config config\\companion.yaml delete <id>
-    python -m tools.memory_review --config config\\companion.yaml clear <category> --yes
-    python -m tools.memory_review --config config\\companion.yaml export
-    python -m tools.memory_review --config config\\companion.yaml vault-status
-    python -m tools.memory_review --config config\\companion.yaml vault-clear --yes
+    python -m tools.memory_review --config config/companion.yaml list [--pending]
+    python -m tools.memory_review --config config/companion.yaml confirm <id>
+    python -m tools.memory_review --config config/companion.yaml delete <id>
+    python -m tools.memory_review --config config/companion.yaml clear <category> --yes
+    python -m tools.memory_review --config config/companion.yaml export
+    python -m tools.memory_review --config config/companion.yaml vault-status
+    python -m tools.memory_review --config config/companion.yaml vault-clear --yes
 
 The private reflection vault is deliberately NOT readable here: vault-status shows only a count and vault-clear
 deletes everything in it. What she reflected on is never shown to whoever runs the host."""

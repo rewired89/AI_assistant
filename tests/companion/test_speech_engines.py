@@ -169,6 +169,27 @@ def test_whisper_drops_confident_no_speech_segments():
     assert r.transcribe(speech()) == "keep me"
 
 
+@pytest.mark.parametrize("junk", ["Ahhhhhhhhhhhhhhhhhhhhhhhh", "no no no no no no", "Thank you. " * 12,
+                                  "the the the the the the the", " ".join(["word"] * 60)])
+def test_whisper_drops_runaway_loops_instead_of_returning_them(junk):
+    r, _ = stt_with([seg(junk)])
+    assert r.transcribe(speech(6.0)) == ""
+
+
+@pytest.mark.parametrize("fine", ["Can you hear me?", "Ahh, that's a good one, thanks so much for telling me about it.",
+                                  "I said no, no, I really don't want that.", "Tell me about foxes and how they live."])
+def test_whisper_keeps_normal_sentences(fine):
+    r, _ = stt_with([seg(fine)])
+    assert r.transcribe(speech(6.0)) == fine
+
+
+def test_whisper_limits_decoding_length_to_the_audio():
+    r, m = stt_with([seg("ok then")])
+    r.transcribe(speech(6.0))
+    kw = m.calls[0][1]
+    assert kw["max_new_tokens"] == 8 * 6 + 24 and kw["compression_ratio_threshold"] == 2.4
+
+
 def test_whisper_load_failures_are_clear_and_do_not_leak_paths():
     def boom(path):
         raise OSError("/secret/path/model.bin missing")

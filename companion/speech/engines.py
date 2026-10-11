@@ -9,9 +9,11 @@ running it as a separate program is fine for a personal build, check licensing b
 from __future__ import annotations
 
 import array
+import re
 import shutil
 import struct
 import subprocess
+import zlib
 
 from ..interfaces import SpeechRecognizer, SpeechSynthesizer
 
@@ -20,6 +22,22 @@ MAX_TEXT_CHARS = 600
 MIN_RMS = 120                          # below this, "speech" is room noise; Whisper would invent words for it
 # Phrases Whisper is known to produce from near-silence; dropped when the clip is short or the model says no-speech.
 HALLUCINATIONS = frozenset({"thank you", "thanks for watching", "you", "bye", "thank you for watching", "okay"})
+
+
+_RUN = re.compile(r"(.)\1{7,}")                                   # "Ahhhhhhhh"
+_REPEAT_WORD = re.compile(r"\b(\w+)(?:[\s,.!?-]+\1\b){4,}", re.I)      # "no no no no no"
+
+
+def looks_degenerate(text: str, seconds: float) -> bool:
+    """Whisper sometimes loops on noise or silence ("Ahhhhhh...", the same word forever) instead of staying quiet.
+    Such output is never a real sentence, so it is thrown away rather than shown to the companion."""
+    if not text:
+        return False
+    if _RUN.search(text) or _REPEAT_WORD.search(text):
+        return True
+    if len(text) >= 40 and len(text.encode()) / max(1, len(zlib.compress(text.encode()))) > 2.4:
+        return True
+    return len(text.split()) / max(seconds, 0.5) > 6.5               # more words per second than anyone speaks
 
 
 class EngineError(Exception):
@@ -63,8 +81,11 @@ class WhisperRecognizer(SpeechRecognizer):
             audio = np.asarray(samples, dtype=np.float32) / 32768.0
         except ImportError:
             audio = [x / 32768.0 for x in samples]
-        segments, _info = self._model.transcribe(audio, language=self.language, beam_size=self.beam_size,
-                                                 condition_on_previous_text=False, vad_filter=False)
+        seconds = n / SAMPLE_RATE
+        segments, _info = self._model.transcribe(
+            audio, language=self.language, beam_size=self.beam_size, condition_on_previous_text=False, vad_filter=False,
+            no_speech_threshold=0.6, log_prob_threshold=-1.0, compression_ratio_threshold=2.4,
+            max_new_tokens=int(8 * seconds) + 24)                  # a runaway loop cannot run for ever (was 24 s once)
         short = n < SAMPLE_RATE * 2
         parts = []
         for s in segments:
@@ -73,6 +94,8 @@ class WhisperRecognizer(SpeechRecognizer):
             parts.append(s.text.strip())
         text = " ".join(p for p in parts if p).strip()
         if short and text.lower().strip(" .!?,") in HALLUCINATIONS:
+            return ""
+        if looks_degenerate(text, seconds):
             return ""
         return text
 

@@ -1,6 +1,6 @@
 """Encrypt an existing plaintext memory file in place (with a verified copy first).
 
-    python -m tools.memory_crypt encrypt data\\memory.db --user her
+    python -m tools.memory_crypt encrypt data/memory.db --user her
 
 The passphrase is read from the NINETAILS_MEMORY_PASSPHRASE environment variable or prompted for. Keep it OUT of
 the folder that holds the memory files: next to the file it protects nothing. If you lose it, the memories are gone.

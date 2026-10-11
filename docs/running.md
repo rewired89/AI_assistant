@@ -1,8 +1,8 @@
 # Running the companion (host)
 
 ```powershell
-copy config\companion.example.yaml config\companion.yaml   # then edit it
-python -m companion --config config\companion.yaml
+Copy-Item config/companion.example.yaml config/companion.yaml   # then edit it
+python -m companion --config config/companion.yaml
 ```
 `companion/app.py` builds everything from that one file and runs the loop (poll voice pipeline, tick proactive director, offer onboarding, sync pending device settings). Ctrl+C stops it and saves state.
 

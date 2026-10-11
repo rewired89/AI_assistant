@@ -1,19 +1,19 @@
-# Copy to config\companion.yaml and edit. Relative paths are relative to this file.
+# Copy to config/companion.yaml and edit. Relative paths are relative to this file.
 species: ninetales            # ninetales | cubone
-device_id: ninetails-01       # created with: python -m tools.provision create ninetails-01 --url wss://HOST:8443 --ca secrets\tls\ca.pem
+device_id: ninetails-01       # created with: python -m tools.provision create ninetails-01 --url wss://HOST:8443 --ca secrets/tls/ca.pem
 user_id: her
 timezone: America/New_York    # UNVERIFIED guess from the spec's example; set her real one
-data_dir: ..\data
-secrets: ..\secrets\keys.json
+data_dir: ../data
+secrets: ../secrets/keys.json
 tls:
-  cert: ..\secrets\tls\server.pem
-  key: ..\secrets\tls\server.key
+  cert: ../secrets/tls/server.pem
+  key: ../secrets/tls/server.key
 listen:
   host: 0.0.0.0               # the robot dials this machine over the home network; use 127.0.0.1 for local tests
   port: 8443
 stt:
-  engine: whisper             # none | whisper (needs: pip install -e .[stt] and python -m tools.fetch_models)
-  model: ..\models\whisper-small.en
+  engine: whisper             # none | whisper (needs: pip install -e ".[stt]" and python -m tools.fetch_models)
+  model: ../models/whisper-base.en   # measured on a Ryzen 5 3500U: base.en RTF 0.2, small.en RTF 1.2 (too slow)
 tts:
   engine: espeak              # none | espeak (needs espeak-ng installed)
 llm:
