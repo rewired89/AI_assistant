@@ -44,6 +44,8 @@ class Reply:
     animation: str | None = None            # one-shot emotion shown after speaking (validated against the protocol enum)
     after_speech: tuple = ()                # ((protocol_type, payload), ...) sent only after the speech finished
     interaction: str | None = None          # growth category of the turn (conversation/teach/play/explore_topic)
+    paced: bool = False                     # trusted scripted text only: "[pause N]" markers and `pauses` become real silence
+    pauses: tuple = ()                      # seconds of silence played after the speech (paced replies only)
 
 
 class Responder(Protocol):
@@ -74,6 +76,38 @@ def clean_transcript(text: str, limit: int) -> str:
     text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C" or ch in " \t\n")
     text = " ".join(text.split())[:limit].strip()
     return text if any(ch.isalnum() for ch in text) else ""
+
+
+PAUSE_MARK = re.compile(r"\[pause (\d{1,2}(?:\.\d)?)\]")
+MAX_PAUSE_S, MAX_TOTAL_PAUSE_S, CLIP_S, PACED_MAX_ITEMS = 60.0, 120.0, 10.0, 24
+
+
+def plan_speech(text: str, paced: bool, trailing, max_sentences: int, max_chars: int) -> list:
+    """Sentences (str) and silences (float seconds) in speaking order. Only trusted scripted text (paced=True) may
+    contain silence; in anything else the markers are removed, so a model or a transcript can never make the
+    robot go quiet on purpose. Each silence is capped, the total is capped, and long ones are cut into short clips."""
+    if not paced:
+        return split_sentences(" ".join(PAUSE_MARK.sub(" ", text).split()), max_sentences, max_chars)
+    items: list = []
+    budget = MAX_TOTAL_PAUSE_S
+
+    def silence(sec: float) -> None:
+        nonlocal budget
+        sec = min(max(0.0, sec), MAX_PAUSE_S, budget)
+        budget -= sec
+        while sec > 0.05:
+            items.append(min(sec, CLIP_S))
+            sec -= CLIP_S
+
+    pos = 0
+    for m in PAUSE_MARK.finditer(text):
+        items.extend(split_sentences(text[pos:m.start()], PACED_MAX_ITEMS, max_chars))
+        silence(float(m.group(1)))
+        pos = m.end()
+    items.extend(split_sentences(text[pos:], PACED_MAX_ITEMS, max_chars))
+    for sec in trailing or ():
+        silence(float(sec))
+    return items[:PACED_MAX_ITEMS]
 
 
 def split_sentences(text: str, max_sentences: int, max_chars: int) -> list[str]:
@@ -341,13 +375,23 @@ class VoicePipeline:
     def _start_speaking(self, text: str, style: str, reply: Reply | None = None) -> None:
         self._abort_all(keep_state=True)
         style = style if style in VOICE_STYLES else "normal"
-        sentences = split_sentences(clean_reply(text), self.cfg.max_sentences, self.cfg.max_sentence_chars)
-        if not sentences:
+        paced = bool(reply and reply.paced)
+        sentences = plan_speech(clean_reply(text), paced, reply.pauses if paced else (), self.cfg.max_sentences,
+                                self.cfg.max_sentence_chars)
+        if not any(isinstance(x, str) for x in sentences):
             return self._to_idle(animate=False)
         self._speech = {"sentences": sentences, "i": 0, "style": style, "job": None, "reply": reply,
-                        "tts": self._pool.submit(self.tts.synthesize, sentences[0], style), "next_tts": None}
+                        "tts": self._render(sentences[0], style), "next_tts": None}
         self._set(State.SPEAKING)
         self._animate("speaking_start", style=style)
+
+    def _render(self, item, style: str) -> Future:
+        """Audio for one item: the synthesizer for a sentence, plain silence for a pause (never touches the engine)."""
+        if isinstance(item, float):
+            f: Future = Future()
+            f.set_result(bytes(int(item * aud.BYTES_PER_SECOND) // 2 * 2))
+            return f
+        return self._pool.submit(self.tts.synthesize, item, style)
 
     def _poll_speaking(self, presses: int) -> None:
         sp = self._speech
@@ -370,7 +414,7 @@ class VoicePipeline:
                 sp["job"] = self.client.begin_playback(bytes(pcm), style=sp["style"])
                 nxt = sp["i"] + 1
                 if nxt < len(sp["sentences"]):  # synthesize the next sentence while this one plays
-                    sp["next_tts"] = self._pool.submit(self.tts.synthesize, sp["sentences"][nxt], sp["style"])
+                    sp["next_tts"] = self._render(sp["sentences"][nxt], sp["style"])
             elif self._timed_out(self.cfg.tts_timeout_s):
                 self.stats["tts_timeouts"] += 1
                 return self._confused_idle()

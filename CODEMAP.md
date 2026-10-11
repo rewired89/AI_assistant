@@ -52,6 +52,7 @@
 | `tests/integration/test_app.py` | Whole companion from config over real TLS with a simulated robot |
 | `tools/memory_review.py` | CLI: list / confirm / delete / clear / export memories; vault shows a count only and can be wiped |
 | `tests/memory/test_review_tool.py` | Review tool: pending flow, --yes guards, vault contents never printed |
+| `tests/companion/test_paced_speech.py` | Pause markers: trusted-only, caps, real silence through the pipeline, barge-in |
 | `companion/security/rotation.py` | `rotate_device_key` (resume-safe) |
 | `tools/provision.py` | CLI: create (bundle) / list / revoke |
 | `companion/application/ws_transport.py` | `WebSocketHostTransport` (wss server in a thread, `DeviceTransport`), `mac_gate`, ssl context helpers, `TokenBucket` |

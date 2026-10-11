@@ -103,7 +103,7 @@ class ConversationEngine:
         if self.psychology is not None:
             pr = self.psychology.handle(utterance, screened=True)
             if pr is not None:                                  # private: not added to history, memory or growth
-                return Reply(pr.text, pr.style, interaction="none")
+                return Reply(pr.text, pr.style, interaction="none", paced=True, pauses=tuple(pr.pauses))
         answered = self._answer_confirmation(utterance)
         if answered:
             return answered

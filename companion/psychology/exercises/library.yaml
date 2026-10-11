@@ -257,7 +257,7 @@ exercises:
   instructions: "About six breaths per minute: in for four counts, out for six. Counting is guidance, not a test."
   steps:
     - {id: ok, kind: ask_yesno, prompt: "Want to try slow breathing together for a minute? If you feel dizzy or it makes you more anxious, just breathe normally or stop."}
-    - {id: guide, kind: say, wait_s: 40, text: "Okay. Sit comfortably. Breathe in slowly through your nose for four. And out gently through your mouth for six. Again, in for four. Out for six. Keep going at your own pace. There's no wrong way."}
+    - {id: guide, kind: say, wait_s: 40, text: "Okay. Sit comfortably. [pause 2] Breathe in slowly through your nose for four. [pause 4] And out gently through your mouth for six. [pause 6] Again, in for four. [pause 4] Out for six. [pause 6] Keep going at your own pace. There's no wrong way."}
     - {id: check, kind: ask_yesno, prompt: "How was that? Do you feel even a little calmer?"}
     - {id: close, kind: say, text: "You can do this anytime. If you want, we can do it again."}
   reflection_questions: []
