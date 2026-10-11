@@ -8,3 +8,8 @@ secrets/
 *.pem
 !tests/**/*.pem
 *.bundle.json
+
+# Python virtual environments
+.venv/
+venv/
+models/
