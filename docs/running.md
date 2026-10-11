@@ -9,6 +9,15 @@ python -m companion --config config/companion.yaml
 ## Where things run
 The language model runs on the Minisforum (Ollama there), not on a laptop: a 3B model froze a 5.7 GB laptop. The companion only sends text to `llm.url`, which must be a home-network address (private IP). On the Minisforum, Ollama must listen on the network: set `OLLAMA_HOST=0.0.0.0` for its service and allow port 11434 from the home network only. Ollama has no login, so anyone on that network can use it; keep the router firewall closed to the internet. Check the link from any machine with `python -m tools.check_llm --config config/companion.yaml`.
 
+## Try it by voice before the hardware exists: the desk robot
+`tools/desk_robot.py` wires the SIMULATED robot to your computer's microphone (`arecord`) and speaker (`aplay`) and runs the whole companion in one process. It is a test rig, not hardware: no screen, battery or real power behavior. Use headphones, or the speaker leaks into the mic.
+```powershell
+sudo apt install -y alsa-utils espeak-ng
+python -m tools.desk_robot init --dir dev --llm-url http://192.168.1.42:11434 --llm-model llama3.2:3b --stt-model models/whisper-base.en
+python -m tools.desk_robot run --dir dev
+```
+She speaks first (the onboarding questions). ENTER = the button (listen, talk, stop talking). `m` + ENTER toggles the mic mute, `q` quits. `dev/` holds keys and her conversations' data, is git-ignored, and must not be shared. Tested with fake audio devices and fake engines only; a real mic and speaker run is the point of trying it.
+
 ## What is wired
 Secret store + TLS wss server (device dials in) -> device client -> onboarding (answers change the live personality) -> safety gate -> psychology engine (private vault) -> conversation engine -> voice pipeline (STT/TTS) -> proactive director. Memory and vault open encrypted when `memory.encrypt: true`.
 

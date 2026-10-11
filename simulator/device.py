@@ -155,6 +155,7 @@ class SimulatedDevice:
         self.capture: dict | None = None
         self.playback: dict | None = None
         self.audio_rejected = 0
+        self.on_speaker = None                      # optional sink for played PCM (a desk setup wires a real speaker here)
         self._seen: OrderedDict[str, list[dict]] = OrderedDict()
         self._out: list[dict] = []
 
@@ -520,6 +521,8 @@ class SimulatedDevice:
             self._finish_playback("error", ("invalid_state", "audio sequence gap"))
             return self._flush()
         pl["next_seq"] += 1
+        if self.on_speaker is not None:
+            self.on_speaker(f.payload)
         pl["received"] += len(f.payload)
         pl["last_rx"] = now
         if pl["received"] - pl["consumed"] > MAX_PLAY_BUFFER or pl["received"] > MAX_PLAY_BYTES:
