@@ -72,9 +72,15 @@ def test_unconfirmed_update_rolls_back_without_the_host(rig, host):
     p = build_package(image(3 * CHUNK, 2), key, product="nine-tails", board="sim-board", version="0.2.0", build=2)
     uid = up.push(p, timeout_s=15)
     up.apply(uid, 2, timeout_s=15)
-    assert wait_for(lambda: dev.fw_version == "0.1.0", timeout=6)
-    assert wait_for(lambda: host.connected)
-    assert c.request("device.get_status", timeout_s=3).result["ota"]["last_rollback"]["reason"] == "confirm_timeout"
+    assert wait_for(lambda: dev.fw_version == "0.1.0" and dev.rebooted >= 2, timeout=6)
+
+    def status():
+        try:
+            return c.request("device.get_status", timeout_s=1).result      # socket may still be mid-redial
+        except Exception:
+            return None
+    assert wait_for(lambda: (status() or {}).get("build") == 1, timeout=6)
+    assert status()["ota"]["last_rollback"]["reason"] == "confirm_timeout"
     with pytest.raises(OtaError):
         up.confirm(uid, 2)
 
