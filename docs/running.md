@@ -6,6 +6,9 @@ python -m companion --config config/companion.yaml
 ```
 `companion/app.py` builds everything from that one file and runs the loop (poll voice pipeline, tick proactive director, offer onboarding, sync pending device settings). Ctrl+C stops it and saves state.
 
+## Where things run
+The language model runs on the Minisforum (Ollama there), not on a laptop: a 3B model froze a 5.7 GB laptop. The companion only sends text to `llm.url`, which must be a home-network address (private IP). On the Minisforum, Ollama must listen on the network: set `OLLAMA_HOST=0.0.0.0` for its service and allow port 11434 from the home network only. Ollama has no login, so anyone on that network can use it; keep the router firewall closed to the internet. Check the link from any machine with `python -m tools.check_llm --config config/companion.yaml`.
+
 ## What is wired
 Secret store + TLS wss server (device dials in) -> device client -> onboarding (answers change the live personality) -> safety gate -> psychology engine (private vault) -> conversation engine -> voice pipeline (STT/TTS) -> proactive director. Memory and vault open encrypted when `memory.encrypt: true`.
 

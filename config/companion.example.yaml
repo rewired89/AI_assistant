@@ -17,8 +17,9 @@ stt:
 tts:
   engine: espeak              # none | espeak (needs espeak-ng installed)
 llm:
-  engine: ollama              # none | ollama (local only unless allow_remote: true)
-  model: llama3.1:8b          # whichever model you pulled; never run with a real model in this project yet
+  engine: ollama              # none | ollama (home-network addresses only unless allow_remote: true)
+  url: http://192.168.1.50:11434   # the Minisforum's address; Ollama does NOT run on the laptop
+  model: llama3.2:3b          # must be pulled ON that server; check with: python -m tools.check_llm --config config/companion.yaml
 memory:
   encrypt: false              # true needs passphrase_env, the NAME of an env var holding the passphrase
   passphrase_env: NINETAILS_MEMORY_PASSPHRASE
