@@ -41,6 +41,9 @@
 | `simulator/ota.py` | `OtaEngine`: A/B slots, verify, trial, rollback, anti-rollback floor |
 | `tools/ota.py` | CLI: keygen / build / verify / info |
 | `tests/protocol/test_ota_format.py`, `tests/firmware/test_ota.py`, `tests/integration/test_wss_ota.py` | OTA format, device rules, update over real TLS |
+| `companion/speech/engines.py` | `WhisperRecognizer` (faster-whisper, local), `EspeakSynthesizer` (espeak-ng subprocess), wav parse + resample |
+| `tools/fetch_models.py` | One-time Whisper model download |
+| `tests/companion/test_speech_engines.py` | Engine adapters: stubbed process/model, real espeak through the pipeline |
 | `companion/security/rotation.py` | `rotate_device_key` (resume-safe) |
 | `tools/provision.py` | CLI: create (bundle) / list / revoke |
 | `companion/application/ws_transport.py` | `WebSocketHostTransport` (wss server in a thread, `DeviceTransport`), `mac_gate`, ssl context helpers, `TokenBucket` |
