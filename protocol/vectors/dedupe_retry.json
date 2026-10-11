@@ -1,0 +1,107 @@
+{
+ "boot_expect": [
+  {
+   "payload": {
+    "boot_cause": "power_on",
+    "firmware_version": "sim-0.1",
+    "protocol_versions": [
+     1
+    ],
+    "recovered_state": false
+   },
+   "type": "device.ready"
+  }
+ ],
+ "description": "The same message_id with a fresh nonce replays the cached answer and never runs twice.",
+ "device": {
+  "battery": 100
+ },
+ "device_id": "vector-bot",
+ "name": "dedupe_retry",
+ "secret_hex": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+ "start_time": 1800000000.0,
+ "steps": [
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "retry-me-0001",
+      "command_type": "display.set_brightness"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "command_id": "retry-me-0001"
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"9896cf12cb9f2fcc1abbf1233f81a894bc509f9851545623415480993b149616\",\"nonce\":\"000000000000000000000001\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"retry-me-0001\",\"payload\":{\"level\":40},\"protocol_version\":1,\"type\":\"display.set_brightness\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "retry-me-0001",
+      "command_type": "display.set_brightness"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "command_id": "retry-me-0001"
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "same id, different payload: still the first answer",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"08d6d7fce3e496a3a2d2592cec00befeb9e95bd139a1a59705f2166eaef1282e\",\"nonce\":\"000000000000000000000002\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"retry-me-0001\",\"payload\":{\"level\":70},\"protocol_version\":1,\"type\":\"display.set_brightness\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00003",
+      "command_type": "device.get_status"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00003",
+      "result": {
+       "animation": null,
+       "battery_percent": 100,
+       "brightness": 40,
+       "capture_active": false,
+       "config": {
+        "default_brightness": 70,
+        "idle_sleep_seconds": 300,
+        "mic_enabled": true,
+        "volume": 60
+       },
+       "firmware_version": "sim-0.1",
+       "playback_active": false,
+       "power_state": "AWAKE",
+       "wake_at": null
+      }
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "brightness is still 40",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"081abf8255d4e90d2614e677f585b578612afe8c102e5fab0f161fff54594e73\",\"nonce\":\"000000000000000000000003\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00003\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": false
+  }
+ ]
+}

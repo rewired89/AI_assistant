@@ -1,0 +1,230 @@
+{
+ "boot_expect": [
+  {
+   "payload": {
+    "boot_cause": "power_on",
+    "firmware_version": "sim-0.1",
+    "protocol_versions": [
+     1
+    ],
+    "recovered_state": false
+   },
+   "type": "device.ready"
+  }
+ ],
+ "description": "Firmware owns battery safety; the host cannot override it.",
+ "device": {
+  "battery": 100
+ },
+ "device_id": "vector-bot",
+ "name": "battery_protection",
+ "secret_hex": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+ "start_time": 1800000000.0,
+ "steps": [
+  {
+   "expect": [
+    {
+     "payload": {
+      "percent": 40,
+      "power_state": "AWAKE",
+      "warning": false
+     },
+     "type": "battery.updated"
+    }
+   ],
+   "kind": "battery",
+   "note": "",
+   "percent": 40
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "percent": 19,
+      "power_state": "AWAKE",
+      "warning": true
+     },
+     "type": "battery.updated"
+    }
+   ],
+   "kind": "battery",
+   "note": "below 20%: warning flag, still AWAKE",
+   "percent": 19
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "percent": 9,
+      "power_state": "LOW_BATTERY",
+      "warning": true
+     },
+     "type": "battery.updated"
+    }
+   ],
+   "kind": "battery",
+   "note": "at or below 10%: LOW_BATTERY, brightness capped to 30",
+   "percent": 9
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00001",
+      "command_type": "display.set_brightness"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "code": "unsafe",
+      "command_id": "cmd-00001",
+      "message": "brightness capped at 30 on low battery"
+     },
+     "type": "command.failed"
+    }
+   ],
+   "kind": "text",
+   "note": "request above the cap is refused by the device",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"f9020eaaea2e6d63e59d1e40a252b178d613677fdae107df0ccc9a439375905a\",\"nonce\":\"000000000000000000000001\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00001\",\"payload\":{\"level\":100},\"protocol_version\":1,\"type\":\"display.set_brightness\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00002",
+      "command_type": "device.get_status"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00002",
+      "result": {
+       "animation": null,
+       "battery_percent": 9,
+       "brightness": 30,
+       "capture_active": false,
+       "config": {
+        "default_brightness": 70,
+        "idle_sleep_seconds": 300,
+        "mic_enabled": true,
+        "volume": 60
+       },
+       "firmware_version": "sim-0.1",
+       "playback_active": false,
+       "power_state": "LOW_BATTERY",
+       "wake_at": null
+      }
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "status shows brightness at the cap and LOW_BATTERY",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"a8af8212e3449e8946c56d602e52043892206b9157db9138a0f50e2603115ea8\",\"nonce\":\"000000000000000000000002\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00002\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "percent": 12,
+      "power_state": "LOW_BATTERY",
+      "warning": true
+     },
+     "type": "battery.updated"
+    }
+   ],
+   "kind": "battery",
+   "note": "inside the 3% hysteresis band: stays LOW_BATTERY",
+   "percent": 12
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00003",
+      "command_type": "device.get_status"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00003",
+      "result": {
+       "animation": null,
+       "battery_percent": 12,
+       "brightness": 30,
+       "capture_active": false,
+       "config": {
+        "default_brightness": 70,
+        "idle_sleep_seconds": 300,
+        "mic_enabled": true,
+        "volume": 60
+       },
+       "firmware_version": "sim-0.1",
+       "playback_active": false,
+       "power_state": "LOW_BATTERY",
+       "wake_at": null
+      }
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "still LOW_BATTERY",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"081abf8255d4e90d2614e677f585b578612afe8c102e5fab0f161fff54594e73\",\"nonce\":\"000000000000000000000003\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00003\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "percent": 14,
+      "power_state": "AWAKE",
+      "warning": true
+     },
+     "type": "battery.updated"
+    }
+   ],
+   "kind": "battery",
+   "note": "above the band: recovers",
+   "percent": 14
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "percent": 4,
+      "power_state": "CRITICAL_BATTERY",
+      "warning": true
+     },
+     "type": "battery.updated"
+    },
+    {
+     "payload": {
+      "reason": "critical_battery",
+      "wake_at": null
+     },
+     "type": "power.sleeping"
+    }
+   ],
+   "kind": "battery",
+   "note": "at or below 5%: critical, the device puts itself to sleep",
+   "percent": 4
+  },
+  {
+   "expect": [],
+   "kind": "text",
+   "note": "asleep: silent",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"5e75760c5605fc18d1b76b55855de9deacc18f68407ca87edcff65b4fd7628b5\",\"nonce\":\"000000000000000000000004\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00004\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": true
+  }
+ ]
+}

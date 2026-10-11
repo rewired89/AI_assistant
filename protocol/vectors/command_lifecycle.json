@@ -1,0 +1,211 @@
+{
+ "boot_expect": [
+  {
+   "payload": {
+    "boot_cause": "power_on",
+    "firmware_version": "sim-0.1",
+    "protocol_versions": [
+     1
+    ],
+    "recovered_state": false
+   },
+   "type": "device.ready"
+  }
+ ],
+ "description": "Accepted is not done: animations complete later, loops until stopped, priority rules.",
+ "device": {
+  "battery": 100
+ },
+ "device_id": "vector-bot",
+ "name": "command_lifecycle",
+ "secret_hex": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+ "start_time": 1800000000.0,
+ "steps": [
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00001",
+      "command_type": "animation.play"
+     },
+     "type": "command.accepted"
+    }
+   ],
+   "kind": "text",
+   "note": "accepted now",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"e73d2a8ed620ba1237e9583d6ba716c9daf19367dc424d11da2dc6982aa15c35\",\"nonce\":\"000000000000000000000001\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00001\",\"payload\":{\"name\":\"happy\"},\"protocol_version\":1,\"type\":\"animation.play\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [],
+   "kind": "advance",
+   "note": "not finished yet",
+   "seconds": 0.5
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "interrupted": false,
+      "name": "happy"
+     },
+     "type": "animation.finished"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00001"
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "advance",
+   "note": "finished event arrives, then completion",
+   "seconds": 3
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00002",
+      "command_type": "animation.play"
+     },
+     "type": "command.accepted"
+    }
+   ],
+   "kind": "text",
+   "note": "",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"72b396019ea6d62b6586a810732c70d48bd174479cc9430984f502f536c8a9ae\",\"nonce\":\"000000000000000000000002\",\"ts\":1800000003},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00002\",\"payload\":{\"loop\":true,\"name\":\"idle\",\"priority\":8},\"protocol_version\":1,\"type\":\"animation.play\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [],
+   "kind": "advance",
+   "note": "a loop never finishes by itself",
+   "seconds": 120
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00003",
+      "command_type": "animation.play"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "code": "busy",
+      "command_id": "cmd-00003",
+      "message": "higher-priority animation playing"
+     },
+     "type": "command.failed"
+    }
+   ],
+   "kind": "text",
+   "note": "lower priority is refused with busy",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"b87756ebe1c717480750c47f8f9a14554e60b28e1a1c91526dad1844f9dfb15f\",\"nonce\":\"000000000000000000000003\",\"ts\":1800000123},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00003\",\"payload\":{\"name\":\"happy\",\"priority\":2},\"protocol_version\":1,\"type\":\"animation.play\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00004",
+      "command_type": "animation.play"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "interrupted": true,
+      "name": "idle"
+     },
+     "type": "animation.finished"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00002"
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "higher priority interrupts",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"527436d3b1063d6a40a1ebe754197bfcea2e68defafa7e0c5a971466a17c4b67\",\"nonce\":\"000000000000000000000004\",\"ts\":1800000123},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00004\",\"payload\":{\"name\":\"excited\",\"priority\":9},\"protocol_version\":1,\"type\":\"animation.play\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00005",
+      "command_type": "animation.stop"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "interrupted": true,
+      "name": "excited"
+     },
+     "type": "animation.finished"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00004"
+     },
+     "type": "command.completed"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00005"
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"4071f31772a1dbd79fcf7b908d752b0b9bf3cbac0896eacafa5c117348119f3f\",\"nonce\":\"000000000000000000000005\",\"ts\":1800000123},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00005\",\"payload\":{},\"protocol_version\":1,\"type\":\"animation.stop\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "code": "invalid_payload",
+      "command_id": "cmd-00006",
+      "message": "'not_an_animation' is not one of ['idle', 'happy', 'sad', 'angry', 'sleepy', 'excited', 'curious', 'confused', 'listenin"
+     },
+     "type": "command.failed"
+    }
+   ],
+   "kind": "text",
+   "note": "schema violation is a failure, not a crash",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"24581539019b686c20d5fc72944f958fddeaaaf256f638de3a7ebb56389a726e\",\"nonce\":\"000000000000000000000006\",\"ts\":1800000123},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00006\",\"payload\":{\"name\":\"not_an_animation\"},\"protocol_version\":1,\"type\":\"animation.play\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "code": "unsupported_command",
+      "command_id": "cmd-00007",
+      "message": "no.such.command"
+     },
+     "type": "command.failed"
+    }
+   ],
+   "kind": "text",
+   "note": "unknown command type",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"46afc2a1bf1822be13bca83749f0bc2e9ab14068b4b5d889b04fcf50a2561d0f\",\"nonce\":\"000000000000000000000007\",\"ts\":1800000123},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00007\",\"payload\":{},\"protocol_version\":1,\"type\":\"no.such.command\"}",
+   "secure": false,
+   "silent": false
+  }
+ ]
+}

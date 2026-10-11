@@ -1,0 +1,165 @@
+{
+ "boot_expect": [
+  {
+   "payload": {
+    "boot_cause": "power_on",
+    "firmware_version": "sim-0.1",
+    "protocol_versions": [
+     1
+    ],
+    "recovered_state": false
+   },
+   "type": "device.ready"
+  }
+ ],
+ "description": "Anything that is not authentic gets NO reply at all (not even an error).",
+ "device": {
+  "battery": 100
+ },
+ "device_id": "vector-bot",
+ "name": "auth_drops_silently",
+ "secret_hex": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+ "start_time": 1800000000.0,
+ "steps": [
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00001",
+      "command_type": "device.get_status"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00001",
+      "result": {
+       "animation": null,
+       "battery_percent": 100,
+       "brightness": 70,
+       "capture_active": false,
+       "config": {
+        "default_brightness": 70,
+        "idle_sleep_seconds": 300,
+        "mic_enabled": true,
+        "volume": 60
+       },
+       "firmware_version": "sim-0.1",
+       "playback_active": false,
+       "power_state": "AWAKE",
+       "wake_at": null
+      }
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "valid: answered",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"85d07c7bce83fc05191874a4c895daed2586feb62e8d31184b94b7d5bfcbb94a\",\"nonce\":\"000000000000000000000001\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00001\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [],
+   "kind": "text",
+   "note": "same bytes again: replay, dropped silently",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"85d07c7bce83fc05191874a4c895daed2586feb62e8d31184b94b7d5bfcbb94a\",\"nonce\":\"000000000000000000000001\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00001\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": true
+  },
+  {
+   "expect": [],
+   "kind": "text",
+   "note": "bad MAC: dropped",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"08af8212e3449e8946c56d602e52043892206b9157db9138a0f50e2603115ea8\",\"nonce\":\"000000000000000000000002\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00002\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": true
+  },
+  {
+   "expect": [],
+   "kind": "text",
+   "note": "payload changed after signing: dropped",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"081abf8255d4e90d2614e677f585b578612afe8c102e5fab0f161fff54594e73\",\"nonce\":\"000000000000000000000003\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00003\",\"payload\":{\"x\":1},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": true
+  },
+  {
+   "expect": [],
+   "kind": "text",
+   "note": "signed for another device: dropped",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"5e75760c5605fc18d1b76b55855de9deacc18f68407ca87edcff65b4fd7628b5\",\"nonce\":\"000000000000000000000004\",\"ts\":1800000000},\"device_id\":\"someone-else\",\"message_id\":\"cmd-00004\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": true
+  },
+  {
+   "expect": [],
+   "kind": "text",
+   "note": "timestamp an hour old: dropped",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"1db323fde737421508b0a2122d2c64d206536f5f0d18362e5f36b7be5431e6fa\",\"nonce\":\"000000000000000000000005\",\"ts\":1799996400},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00005\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": true
+  },
+  {
+   "expect": [],
+   "kind": "text",
+   "note": "timestamp an hour ahead: dropped",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"24c7f99c7979e80f90e533978a9e131cf4d09ffc848be57be68642dcdda81626\",\"nonce\":\"000000000000000000000006\",\"ts\":1800003600},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00006\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": true
+  },
+  {
+   "expect": [],
+   "kind": "text",
+   "note": "garbage: dropped",
+   "raw": "not json",
+   "secure": false,
+   "silent": true
+  },
+  {
+   "expect": [],
+   "kind": "text",
+   "note": "empty object: dropped",
+   "raw": "{}",
+   "secure": false,
+   "silent": true
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00007",
+      "command_type": "device.get_status"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00007",
+      "result": {
+       "animation": null,
+       "battery_percent": 100,
+       "brightness": 70,
+       "capture_active": false,
+       "config": {
+        "default_brightness": 70,
+        "idle_sleep_seconds": 300,
+        "mic_enabled": true,
+        "volume": 60
+       },
+       "firmware_version": "sim-0.1",
+       "playback_active": false,
+       "power_state": "AWAKE",
+       "wake_at": null
+      }
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "still alive afterwards",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"efe5a21aed1d77a70cc92041f3b03f5ed46ff4f3aa496e1b6d510271239abd0e\",\"nonce\":\"000000000000000000000007\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00007\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": false
+  }
+ ]
+}

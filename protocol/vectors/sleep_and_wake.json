@@ -1,0 +1,231 @@
+{
+ "boot_expect": [
+  {
+   "payload": {
+    "boot_cause": "power_on",
+    "firmware_version": "sim-0.1",
+    "protocol_versions": [
+     1
+    ],
+    "recovered_state": false
+   },
+   "type": "device.ready"
+  }
+ ],
+ "description": "Sleep is silent radio: nothing is answered until a physical or scheduled wake.",
+ "device": {
+  "battery": 100
+ },
+ "device_id": "vector-bot",
+ "name": "sleep_and_wake",
+ "secret_hex": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+ "start_time": 1800000000.0,
+ "steps": [
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00001",
+      "command_type": "power.sleep"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "reason": "user_request",
+      "wake_at": null
+     },
+     "type": "power.sleeping"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00001",
+      "result": {
+       "wake_at": null
+      }
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"ddb49496578cdf5d2fb5e739c04e03d53cf62cab42f8c987c3a67ef62ba84095\",\"nonce\":\"000000000000000000000001\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00001\",\"payload\":{\"reason\":\"user_request\",\"requested_by\":\"user\"},\"protocol_version\":1,\"type\":\"power.sleep\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [],
+   "kind": "text",
+   "note": "asleep: no answer",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"a8af8212e3449e8946c56d602e52043892206b9157db9138a0f50e2603115ea8\",\"nonce\":\"000000000000000000000002\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00002\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": true
+  },
+  {
+   "expect": [],
+   "kind": "button",
+   "note": "a single press does not wake it",
+   "press": "single"
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "cause": "button"
+     },
+     "type": "power.waking"
+    },
+    {
+     "payload": {
+      "cause": "button"
+     },
+     "type": "power.woke"
+    },
+    {
+     "payload": {
+      "boot_cause": "button",
+      "firmware_version": "sim-0.1",
+      "protocol_versions": [
+       1
+      ],
+      "recovered_state": false
+     },
+     "type": "device.ready"
+    }
+   ],
+   "kind": "button",
+   "note": "a double press wakes it",
+   "press": "double"
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00003",
+      "command_type": "device.get_status"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00003",
+      "result": {
+       "animation": null,
+       "battery_percent": 100,
+       "brightness": 70,
+       "capture_active": false,
+       "config": {
+        "default_brightness": 70,
+        "idle_sleep_seconds": 300,
+        "mic_enabled": true,
+        "volume": 60
+       },
+       "firmware_version": "sim-0.1",
+       "playback_active": false,
+       "power_state": "AWAKE",
+       "wake_at": null
+      }
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "awake again",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"081abf8255d4e90d2614e677f585b578612afe8c102e5fab0f161fff54594e73\",\"nonce\":\"000000000000000000000003\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00003\",\"payload\":{},\"protocol_version\":1,\"type\":\"device.get_status\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00004",
+      "command_type": "power.sleep"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "code": "invalid_payload",
+      "command_id": "cmd-00004",
+      "message": "wake_at is not in the future"
+     },
+     "type": "command.failed"
+    }
+   ],
+   "kind": "text",
+   "note": "wake time in the past: refused",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"185f59e6829477288438f829d138d539cde1dea88150422ceb84980729f44a30\",\"nonce\":\"000000000000000000000004\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00004\",\"payload\":{\"reason\":\"scheduled\",\"requested_by\":\"system\",\"wake_at\":\"2020-01-01T00:00:00+00:00\"},\"protocol_version\":1,\"type\":\"power.sleep\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "command_id": "cmd-00005",
+      "command_type": "power.sleep"
+     },
+     "type": "command.accepted"
+    },
+    {
+     "payload": {
+      "reason": "scheduled",
+      "wake_at": "2027-01-15T08:20:00+00:00"
+     },
+     "type": "power.sleeping"
+    },
+    {
+     "payload": {
+      "command_id": "cmd-00005",
+      "result": {
+       "wake_at": "2027-01-15T08:20:00+00:00"
+      }
+     },
+     "type": "command.completed"
+    }
+   ],
+   "kind": "text",
+   "note": "valid scheduled sleep",
+   "raw": "{\"auth\":{\"kid\":1,\"mac\":\"98c7eb0ec29c1d00a63f1d6c40231bcfe68eb6bf1a1c1f939b9374130ad54aa7\",\"nonce\":\"000000000000000000000005\",\"ts\":1800000000},\"device_id\":\"vector-bot\",\"message_id\":\"cmd-00005\",\"payload\":{\"reason\":\"scheduled\",\"requested_by\":\"system\",\"wake_at\":\"2027-01-15T08:20:00+00:00\"},\"protocol_version\":1,\"type\":\"power.sleep\"}",
+   "secure": false,
+   "silent": false
+  },
+  {
+   "expect": [],
+   "kind": "advance",
+   "note": "too early: still asleep",
+   "seconds": 60
+  },
+  {
+   "expect": [
+    {
+     "payload": {
+      "cause": "scheduled"
+     },
+     "type": "power.waking"
+    },
+    {
+     "payload": {
+      "cause": "scheduled"
+     },
+     "type": "power.woke"
+    },
+    {
+     "payload": {
+      "boot_cause": "timer",
+      "firmware_version": "sim-0.1",
+      "protocol_versions": [
+       1
+      ],
+      "recovered_state": false
+     },
+     "type": "device.ready"
+    }
+   ],
+   "kind": "advance",
+   "note": "wake time passed: it wakes by itself",
+   "seconds": 31536000
+  }
+ ]
+}
