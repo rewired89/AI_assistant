@@ -21,7 +21,7 @@ D = 86400
 
 class World:
     def __init__(self, rig, clock, llm=None, memory=None, proactive="frequent", name="Sam", state_store=None,
-                 curiosity=0.95, playfulness=0.3, psychology=None, safety=None, insights=None, checkin=None, checkin_blocked=lambda: False, **dcfg):
+                 curiosity=0.95, playfulness=0.3, psychology=None, safety=None, insights=None, checkin=None, checkin_blocked=lambda: False, reminders=None, remind_talk=None, **dcfg):
         self.clock = clock
         self.r = rig(responder=ScriptedResponder([Reply("Okay.")]))
         self.beh = self.r.pipe.engine
@@ -36,7 +36,8 @@ class World:
         self.r.pipe.responder = self.conv
         self.d = ProactiveDirector(self.beh, self.conv, self.r.pipe, clock, memory=memory, state_store=state_store,
                                    config=DirectorConfig(**dcfg), rng=random.Random(3), psychology=psychology, insights=insights,
-                                   checkin=checkin, checkin_blocked=checkin_blocked)
+                                   checkin=checkin, checkin_blocked=checkin_blocked, reminders=reminders, remind_talk=remind_talk,
+                                   reminder_name=lambda: name)
         self.device = self.r.device
 
     def drive(self, seconds, stop=None, coarse=20.0, fine=0.05):
@@ -431,3 +432,66 @@ def test_the_check_in_holds_back_after_a_safety_signal_on_low_battery_and_after_
     w.drive(120)
     assert w.d.stats["checkin_asked"] == 0
     assert w.drive(40 * 60, stop=lambda: w.d.stats["checkin_asked"] >= 1)            # half an hour later it may ask
+
+
+# ------------------------------------------------------------------ reminders spoken by the robot
+def _reminders(tmp_path, clock, **kw):
+    from companion.productivity import ProductivityStore
+    from companion.productivity.reminders import ReminderStore
+    from companion.productivity.remind_talk import RemindTalk
+    store = ProductivityStore(tmp_path / "p.db", clock)
+    rs = ReminderStore(store, clock, "UTC")
+    due = datetime.fromtimestamp((int(clock.t // 60) + 2) * 60, timezone.utc)
+    rs.create(title="Eat something", kind="once", date=due.strftime("%Y-%m-%d"), time=due.strftime("%H:%M"), tz="UTC", **kw)
+    return store, rs, RemindTalk(rs, clock, "UTC")
+
+
+def test_a_due_reminder_is_spoken_and_only_then_recorded_as_spoken(world, tmp_path, clock):
+    store, rs, talk = _reminders(tmp_path, clock)
+    w = world(proactive="never", reminders=rs, remind_talk=talk)
+    assert w.drive(300, stop=lambda: w.d.stats["reminder_started"] >= 1)
+    occ = rs.occurrences()[0]
+    assert occ["robot"] == "speaking" and occ["status"] == "pending"                      # started is not done
+    w.settle()
+    occ = rs.occurrences()[0]
+    assert occ["robot"] == "spoken" and occ["status"] == "delivered" and "around" in occ["spoken_text"]
+    assert occ["spoken_text"] in spoken(w.r) and w.llm.calls == []                       # the words, from the library, no model
+    w.drive(3600)
+    assert w.d.stats["reminder_started"] == 1                                              # never repeated
+    assert talk._ctx and talk._ctx["id"] == occ["id"]                                      # "snooze" now means something
+    store.close()
+
+
+def test_a_sleeping_robot_does_not_speak_and_the_record_never_says_it_did(world, tmp_path, clock):
+    store, rs, talk = _reminders(tmp_path, clock, grace_minutes=5)
+    w = world(proactive="never", reminders=rs, remind_talk=talk)
+    w.r.client.request("power.sleep", {"reason": "user_request", "requested_by": "user"})
+    w.drive(5)
+    assert w.d.asleep
+    w.drive(20 * 60)
+    occ = rs.occurrences()[0]
+    assert occ["status"] == "missed" and occ["robot"] == "unavailable" and occ["phone"] == "pending"
+    assert w.d.stats["reminder_started"] == 0 and spoken(w.r) == ""
+    assert "could not say it" in rs.reminders()[0]["last_delivery"]
+    store.close()
+
+
+def test_a_reminder_that_comes_due_while_she_is_talking_waits_then_speaks(world, tmp_path, clock):
+    store, rs, talk = _reminders(tmp_path, clock)
+    w = world(proactive="never", reminders=rs, remind_talk=talk)
+    w.r.press()
+    w.r.run(lambda: w.r.pipe.state is State.LISTENING)
+    w.drive(60)
+    assert w.d.stats["reminder_started"] == 0 or w.r.pipe.state is not State.LISTENING
+    assert w.drive(300, stop=lambda: w.d.stats["reminder_started"] >= 1)
+    store.close()
+
+
+def test_a_reminder_speech_that_was_cut_off_is_recorded_as_failed(world, tmp_path, clock):
+    store, rs, talk = _reminders(tmp_path, clock)
+    w = world(proactive="never", reminders=rs, remind_talk=talk)
+    assert w.drive(300, stop=lambda: w.d.stats["reminder_started"] >= 1)
+    w.r.press()                                                                            # she interrupts by pressing the button
+    w.settle()
+    assert rs.occurrences()[0]["robot"] == "failed" and w.d.stats["reminder_failed"] == 1
+    store.close()

@@ -231,7 +231,7 @@ def test_export_and_delete_everything(env):
     assert len(data["notes"]) == 1 and data["lists"][0]["items"][0]["text"] == "a" and data["journal"][0]["text"].startswith("Today")
     assert c.call("POST", "/api/delete-all", {"confirm": "nope"})[0] == 400 and len(store.notes()) == 1
     st, gone, _ = c.call("POST", "/api/delete-all", {"confirm": "DELETE"})
-    assert gone == {"notes": 1, "lists": 1, "journal": 1} and store.notes() == [] and store.lists() == [] and journal.entries() == []
+    assert gone == {"notes": 1, "lists": 1, "reminders": 0, "journal": 1} and store.notes() == [] and store.lists() == [] and journal.entries() == []
 
 
 def test_settings_toggle_reaches_the_robots_dictation(env):
@@ -351,3 +351,116 @@ def test_a_browser_style_delete_with_no_body_works(env):
     assert raw("DELETE", f"/api/items/{lst['items'][0]['id']}") == 200
     assert raw("DELETE", f"/api/lists/{lst['id']}") == 200
     assert raw("DELETE", "/api/journal/j1abc") == 200
+
+
+# ------------------------------------------------------------------ reminders over the phone API
+@pytest.fixture
+def renv(tmp_path):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from companion.productivity.reminders import ReminderStore
+    ny = ZoneInfo("America/New_York")
+    clock = Clock()
+    clock.t = datetime(2026, 10, 12, 9, 0, tzinfo=ny).timestamp()
+    store = ProductivityStore(tmp_path / "p.db", clock)
+    rs = ReminderStore(store, clock, "America/New_York")
+    auth = AuthStore(tmp_path / "auth.json", clock)
+    app = WebApp(store, MemJournal(), auth, clock, port=0, name=lambda: "Sam", reminders=rs, status=lambda: {"robot": "asleep"})
+    app.start()
+    c = login(app, auth)
+    yield app, rs, c, clock, ny
+    app.stop()
+    store.close()
+
+
+def test_create_the_daily_3pm_reminder_from_the_phone_and_it_is_due_at_3pm(renv):
+    from datetime import datetime
+    app, rs, c, clock, ny = renv
+    st, r, _ = c.call("POST", "/api/reminders", {"title": "Eat something", "kind": "daily", "time": "15:00",
+                                                 "channels": {"robot": True, "phone": True}, "message": "Hey! It's {time}. Want a snack, {name}?"})
+    assert st == 201 and r["schedule_text"] == "every day at 3:00 PM" and r["status"] == "scheduled" and r["tz"] == "America/New_York"
+    assert datetime.fromtimestamp(r["next_at"], ny).strftime("%H:%M") == "15:00"
+    clock.t = datetime(2026, 10, 12, 14, 59, tzinfo=ny).timestamp()
+    assert c.call("GET", "/api/reminders/due")[1]["due"] == []
+    clock.t = datetime(2026, 10, 12, 15, 0, 5, tzinfo=ny).timestamp()
+    due = c.call("GET", "/api/reminders/due")[1]["due"]
+    assert len(due) == 1 and due[0]["title"] == "Eat something" and due[0]["phone"] == "pending" and due[0]["robot"] == "pending"
+    oid = due[0]["id"]
+    assert c.call("POST", f"/api/occurrences/{oid}/seen")[1] == {"ok": True}
+    assert c.call("GET", "/api/reminders/due")[1]["due"] == []
+    rem = c.call("GET", "/api/reminders")[1]["reminders"][0]
+    assert "seen on your phone" in rem["last_delivery"] and "spoken" not in rem["last_delivery"]           # the phone saw it; the robot did NOT
+
+
+def test_editing_pausing_duplicating_and_deleting_from_the_phone(renv):
+    from datetime import datetime
+    app, rs, c, clock, ny = renv
+    r = c.call("POST", "/api/reminders", {"title": "Drink water", "kind": "daily", "time": "15:00"})[1]
+    u = c.call("PUT", f"/api/reminders/{r['id']}", {"time": "16:30", "style": "playful"})[1]
+    assert u["id"] == r["id"] and u["schedule_text"] == "every day at 4:30 PM" and len(c.call("GET", "/api/reminders")[1]["reminders"]) == 1
+    assert c.call("POST", f"/api/reminders/{r['id']}/pause")[1]["status"] == "paused"
+    clock.t = datetime(2026, 10, 12, 17, tzinfo=ny).timestamp()                                                # past the 4:30 time
+    assert c.call("GET", "/api/reminders/due")[1]["due"] == []                                                # paused: nothing, ever
+    assert c.call("POST", f"/api/reminders/{r['id']}/resume")[1]["status"] == "scheduled"
+    d = c.call("POST", f"/api/reminders/{r['id']}/duplicate")[1]
+    assert d["id"] != r["id"] and len(c.call("GET", "/api/reminders")[1]["reminders"]) == 2
+    assert c.call("DELETE", f"/api/reminders/{r['id']}")[0] == 200 and len(c.call("GET", "/api/reminders")[1]["reminders"]) == 1
+    assert c.call("PUT", f"/api/reminders/{r['id']}", {"time": "10:00"})[0] == 404
+
+
+def test_snooze_ack_skip_and_history(renv):
+    from datetime import datetime
+    app, rs, c, clock, ny = renv
+    r = c.call("POST", "/api/reminders", {"title": "Stretch", "kind": "daily", "time": "10:00", "snooze_minutes": 15})[1]
+    clock.t = datetime(2026, 10, 12, 10, 1, tzinfo=ny).timestamp()
+    oid = c.call("GET", "/api/reminders/due")[1]["due"][0]["id"]
+    s = c.call("POST", f"/api/occurrences/{oid}/snooze", {})[1]
+    assert s["due_at"] == pytest.approx(clock.t + 15 * 60) and s["snooze_of"] == oid                          # her own default of 15 minutes
+    assert c.call("POST", f"/api/occurrences/{s['id']}/snooze", {"minutes": 0})[0] == 400
+    assert c.call("POST", f"/api/occurrences/{s['id']}/ack")[1] == {"ok": True}
+    assert c.call("POST", f"/api/reminders/{r['id']}/skip")[1]["next_at"] > clock.t + 86400
+    h = c.call("GET", f"/api/reminders/history?id={r['id']}")[1]["history"]
+    assert {x["status"] for x in h} >= {"snoozed", "acknowledged"}
+
+
+def test_bad_reminders_and_ids_are_refused(renv):
+    app, rs, c, *_ = renv
+    for bad in ({"title": "", "kind": "daily", "time": "15:00"}, {"title": "x", "kind": "daily", "time": "99:99"}, {"title": "x", "kind": "weekly", "time": "09:00"},
+                {"title": "x", "kind": "daily", "time": "09:00", "tz": "Mars/Base"}, {"title": "x", "kind": "daily", "time": "09:00", "message": "{secret}"}):
+        assert c.call("POST", "/api/reminders", bad)[0] == 400
+    assert c.call("POST", "/api/occurrences/../seen")[0] == 404
+    assert c.call("POST", "/api/occurrences/aaaaaaaaaaaa:1/seen")[0] == 404 and rs.reminders() == []
+
+
+def test_preview_shows_varied_wording_and_never_changes_the_schedule(renv):
+    app, rs, c, *_ = renv
+    s = c.call("POST", "/api/reminders/preview", {"title": "Eat something", "style": "gentle", "time": "15:00"})[1]["samples"]
+    assert len(s) == 3 and len(set(s)) == 3 and all("around 3 PM" in x or "grab" in x or "eat" in x.lower() for x in s)
+    assert c.call("POST", "/api/reminders/preview", {"title": "Eat", "message": "Hi {name}, {title}!"})[1]["samples"] == ["Hi friend, Eat!"]
+    assert "phone" in c.call("POST", "/api/reminders/preview", {"title": "Eat", "style": "quiet"})[1]["samples"][0]
+    assert c.call("POST", "/api/reminders/preview", {"title": "Eat", "message": "{bad}"})[0] == 400
+    assert rs.reminders() == []
+
+
+def test_settings_status_and_the_honest_notification_line(renv):
+    app, rs, c, *_ = renv
+    assert c.call("PUT", "/api/reminder-settings", {"speak": False, "quiet_start": "22:00", "quiet_end": "07:00", "fallback": "skip"})[1]["speak"] is False
+    assert c.call("PUT", "/api/reminder-settings", {"quiet_start": "25:00"})[0] == 400
+    st = c.call("GET", "/api/status")[1]
+    assert st["robot"] == "asleep" and st["phone_notifications"] == "only while this app is open"                   # no pretending OS notifications work
+
+
+def test_export_and_delete_all_include_reminders(renv):
+    app, rs, c, *_ = renv
+    c.call("POST", "/api/reminders", {"title": "Eat something", "kind": "daily", "time": "15:00"})
+    st, raw, _ = c.call("GET", "/api/export")
+    data = json.loads(raw) if isinstance(raw, bytes) else raw
+    assert data["reminders"]["reminders"][0]["title"] == "Eat something"
+    assert c.call("POST", "/api/delete-all", {"confirm": "DELETE"})[1]["reminders"] == 1 and rs.reminders() == []
+
+
+def test_reminder_endpoints_need_login(renv):
+    app, rs, c, *_ = renv
+    anon = Client(app)
+    for method, path in (("GET", "/api/reminders"), ("GET", "/api/reminders/due"), ("POST", "/api/reminders"), ("GET", "/api/status")):
+        assert anon.call(method, path, {} if method == "POST" else None)[0] == 401

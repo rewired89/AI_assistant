@@ -1,7 +1,7 @@
 # Phone app: notes, lists and her private journal
 
 A web app she opens on her phone (and can add to the home screen). It reads and writes the same notes and lists the robot's voice commands use,
-and shows the journal entries she chose to keep. Teal and pink, built for a small screen.
+and shows the journal entries she chose to keep. Soft teal and pink frosted glass, rounded panels, a floating round-icon dock on phones and a left rail on wide screens, built for a small screen.
 
 ## See it now (sample data, no login)
 ```powershell
@@ -49,6 +49,5 @@ same-origin; the Host header must be ours; size-limited JSON; her text is shown 
   not the administrator. A design where only her passphrase can open the data is possible but would stop the robot reading notes aloud while she is logged out; not built.
 - No audio is recorded or kept yet, so a "voice note" is text from the speech recognizer. Keeping the recording, playing it back, and "transcription pending" need the pipeline to hand audio to the store.
 - Summaries (separate from the note) need the language model: not built. Reading a note aloud from the phone, and sharing, are not built.
-- Reminders are not built. The phone app cannot promise an exact local notification: a web app cannot schedule notifications for a later time while it is closed. Plan: the robot speaks reminders from the host's
-  schedule; phone notifications need either web push (internet and a push service) or wrapping this same app in a native shell (Capacitor) for OS notifications. Neither is claimed until it is built and tested.
+- Reminders are built (see `docs/reminders.md`). Phone alerts work only while the app is open: a web app cannot schedule notifications while closed. Web push or a Capacitor wrapper would fix that; neither is built or claimed.
 - Tested with Python HTTP tests and Chromium screenshots on a phone-sized window; not yet tried on a real phone.

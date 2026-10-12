@@ -12,7 +12,10 @@ import tempfile
 import time
 from pathlib import Path
 
+from datetime import datetime, timedelta, timezone
+
 from companion.productivity import ProductivityStore
+from companion.productivity.reminders import ReminderStore
 from companion.webapp import AuthStore, Journal, WebApp
 
 
@@ -54,6 +57,20 @@ def seed(store: ProductivityStore) -> None:
     store.create_list("Daily tasks", ["exercise", "study Russian", "drink water"])
 
 
+def seed_reminders(rs: ReminderStore) -> None:
+    """Sample reminders (times in UTC so the demo works anywhere). One is due right now so the banner shows."""
+    now = datetime.now(timezone.utc)
+    at = lambda m: (now + timedelta(minutes=m)).strftime("%H:%M")
+    real = rs.clock
+    rs.clock = lambda: real() - 300                       # created five minutes ago, so this one has just gone off
+    rs.create(title="Call Mia back", kind="once", date=(now - timedelta(minutes=2)).strftime("%Y-%m-%d"), time=(now - timedelta(minutes=2)).strftime("%H:%M"), tz="UTC")
+    rs.clock = real
+    rs.create(title="Take vitamins", kind="daily", time=at(95), tz="UTC", style="gentle")
+    rs.create(title="Study Russian", kind="weekly", weekdays=[0, 2, 4], time=at(240), tz="UTC", style="playful")
+    rs.create(title="Drink water", kind="interval", interval_minutes=120, window_start="09:00", window_end="21:00", tz="UTC")
+    rs.create(title="Water the plants", kind="weekly", weekdays=[5], time="10:00", tz="UTC", priority="low")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -76,7 +93,9 @@ def main(argv: list[str] | None = None) -> int:
     tmp = tempfile.TemporaryDirectory()
     store = ProductivityStore(Path(tmp.name) / "demo.db", time.time)
     seed(store)
-    app = WebApp(store, SampleJournal(time.time()), None, time.time, port=a.port, demo=True, name=lambda: "Sam")
+    rem = ReminderStore(store, time.time, "UTC")
+    seed_reminders(rem)
+    app = WebApp(store, SampleJournal(time.time()), None, time.time, port=a.port, demo=True, name=lambda: "Sam", reminders=rem)
     url = app.start()
     print(f"Nine Tails app (SAMPLE data, nothing is saved): {url}\nOpen that address in your browser. On a phone-sized window it looks like the real app. Ctrl+C stops it.")
     if not a.no_browser:

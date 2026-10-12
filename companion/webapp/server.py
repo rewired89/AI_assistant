@@ -186,7 +186,7 @@ class AuthStore:
 class WebApp:
     def __init__(self, store: ProductivityStore, journal: Journal, auth: AuthStore | None, clock=time.time, host: str = "127.0.0.1",
                  port: int = 8790, tls: tuple[str, str] | None = None, allowed_hosts: list[str] | None = None,
-                 name=lambda: None, demo: bool = False, extra: dict | None = None):
+                 name=lambda: None, demo: bool = False, extra: dict | None = None, reminders=None, status=lambda: {}):
         if host not in ("127.0.0.1", "localhost", "::1") and not tls:
             raise WebAppError("listening beyond this computer needs a TLS certificate (tls=(cert, key)); otherwise use 127.0.0.1")
         if demo and host not in ("127.0.0.1", "localhost"):
@@ -197,6 +197,7 @@ class WebApp:
         self.host, self.port, self.tls, self.name, self.demo = host, port, tls, name, demo
         self.extra_hosts = set(allowed_hosts or [])
         self.extra = extra or {}
+        self.reminders, self.status = reminders, status
         self.url = ""
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -382,6 +383,8 @@ class WebApp:
         if m:
             l = self.store.get_list(m.group(1))
             return h._json(200 if l else 404, l or {"error": "no such list"})
+        if path.startswith("/api/reminders") or path in ("/api/reminder-settings", "/api/status"):
+            return self._get_reminders(h, path, q)
         if path == "/api/journal":
             return h._json(200, {"entries": self.journal.entries()})
         if path == "/api/settings":
@@ -389,9 +392,116 @@ class WebApp:
         if path == "/api/export":
             data = self.store.export()
             data["journal"] = self.journal.entries()
+            if self.reminders is not None:
+                data["reminders"] = self.reminders.export()
             body = json.dumps(data, indent=1).encode()
             return h._send(200, body, "application/json", {"Content-Disposition": 'attachment; filename="nine-tails-export.json"'})
         return h._json(404, {"error": "not found"})
+
+    # ---- reminders --------------------------------------------------------------------------------
+    def _get_reminders(self, h, path: str, q: dict) -> None:
+        rs = self.reminders
+        if path == "/api/status":
+            st = {"robot": "unknown", **(self.status() or {})}
+            st["phone_notifications"] = "only while this app is open"
+            return h._json(200, st)
+        if rs is None:
+            return h._json(404, {"error": "reminders are not set up"})
+        rs.tick()
+        if path == "/api/reminders":
+            return h._json(200, {"reminders": rs.reminders(), "settings": rs.settings(), "now": self.clock()})
+        if path == "/api/reminders/upcoming":
+            try:
+                days = max(1, min(31, int(q.get("days", "7"))))
+            except ValueError:
+                days = 7
+            return h._json(200, {"upcoming": rs.upcoming(days=days), "now": self.clock()})
+        if path == "/api/reminders/due":
+            return h._json(200, {"due": rs.phone_pending(), "now": self.clock()})
+        if path == "/api/reminders/history":
+            rid = q.get("id") if re.fullmatch(r"[0-9a-f]{12}", q.get("id", "")) else None
+            return h._json(200, {"history": rs.occurrences(40, rid)})
+        if path == "/api/reminder-settings":
+            return h._json(200, rs.settings())
+        return h._json(404, {"error": "not found"})
+
+    def _write_reminders(self, h, method: str, path: str, b: dict) -> bool:
+        """Returns True if the request was a reminders request (and was answered)."""
+        rs = self.reminders
+        is_rem = path.startswith("/api/reminders") or path.startswith("/api/occurrences/") or path == "/api/reminder-settings"
+        if not is_rem:
+            return False
+        if rs is None:
+            h._json(404, {"error": "reminders are not set up"})
+            return True
+        fields = {k: v for k, v in b.items() if k in ("title", "message", "style", "kind", "time", "date", "weekdays", "interval_minutes", "window_start",
+                                                       "window_end", "start_date", "end_date", "tz", "snooze_minutes", "grace_minutes", "priority", "channels")}
+        if path == "/api/reminders" and method == "POST":
+            h._json(201, rs.create(**fields))
+        elif path == "/api/reminders/preview" and method == "POST":
+            h._json(200, {"samples": self._preview(rs, fields)})
+        elif path == "/api/reminder-settings" and method == "PUT":
+            h._json(200, rs.set_settings(**{k: v for k, v in b.items() if k in ("speak", "phone", "fallback", "style", "quiet_start", "quiet_end", "tz")}))
+        else:
+            m = re.fullmatch(r"/api/reminders/([0-9a-f]{12})(?:/(pause|resume|duplicate|skip))?", path)
+            if m:
+                rid, act = m.groups()
+                if rs.get(rid) is None:
+                    h._json(404, {"error": "no such reminder"})
+                elif method == "PUT" and not act:
+                    h._json(200, rs.update(rid, **fields))
+                elif method == "DELETE" and not act:
+                    h._json(200, {"ok": rs.delete(rid)})
+                elif method == "POST" and act == "pause":
+                    h._json(200, rs.set_enabled(rid, False))
+                elif method == "POST" and act == "resume":
+                    h._json(200, rs.set_enabled(rid, True))
+                elif method == "POST" and act == "duplicate":
+                    h._json(201, rs.duplicate(rid))
+                elif method == "POST" and act == "skip":
+                    h._json(200, rs.skip_next(rid))
+                else:
+                    h._json(404, {"error": "not found"})
+                return True
+            m = re.fullmatch(r"/api/occurrences/([0-9a-f]{12}:\d{1,12}(?:~s\d{1,3})?)/(seen|ack|snooze)", path)
+            if m and method == "POST":
+                oid, act = m.groups()
+                if rs.get_occurrence(oid) is None:
+                    h._json(404, {"error": "no such reminder moment"})
+                elif act == "seen":
+                    h._json(200, {"ok": rs.mark_phone_seen(oid)})
+                elif act == "ack":
+                    h._json(200, {"ok": rs.acknowledge(oid)})
+                else:
+                    until = b.get("until")
+                    mins = b.get("minutes")
+                    h._json(200, rs.snooze(oid, mins if isinstance(mins, int) and not isinstance(mins, bool) else None,
+                                           float(until) if isinstance(until, (int, float)) and not isinstance(until, bool) else None))
+            else:
+                h._json(404, {"error": "not found"})
+        return True
+
+    @staticmethod
+    def _preview(rs, f: dict) -> list[str]:
+        from ..productivity.reminders import check_template, compose
+        title = re.sub(r"\s+", " ", str(f.get("title") or "")).strip()[:80] or "Your reminder"
+        style = f.get("style") if f.get("style") in ("auto", "plain", "direct", "gentle", "playful", "quiet") else "auto"
+        msg = check_template(str(f.get("message") or ""))
+        tz = f.get("tz") if isinstance(f.get("tz"), str) else rs.default_tz
+        hm = f.get("time") if isinstance(f.get("time"), str) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", f.get("time") or "") else "15:00"
+        from zoneinfo import ZoneInfo
+        try:
+            z = ZoneInfo(tz)
+        except Exception:
+            z = ZoneInfo(rs.default_tz)
+            tz = rs.default_tz
+        from datetime import datetime as _dt
+        base = _dt.now(z).replace(hour=int(hm[:2]), minute=int(hm[3:]), second=0, microsecond=0).timestamp()
+        rem = {"id": "0000000000aa", "title": title, "message": msg, "style": style, "tz": tz}
+        if style == "quiet":
+            return ["(Quiet: Nine Tails says nothing; this reminder only shows on your phone.)"]
+        n = 1 if msg or style in ("plain", "direct") else 3
+        return [compose(rem, base, None, "gentle", variant=i) for i in range(n)]
 
     def _write(self, h, method: str, path: str, b: dict) -> None:
         try:
@@ -402,6 +512,8 @@ class WebApp:
             return h._json(400, {"error": "bad request"})
 
     def _write_inner(self, h, method: str, path: str, b: dict) -> None:
+        if self._write_reminders(h, method, path, b):
+            return
         S = self.store
         if path == "/api/notes" and method == "POST":
             n = S.add_note(str(b.get("body", "")), kind="written", title=b.get("title"), tags=b.get("tags"), source="phone")

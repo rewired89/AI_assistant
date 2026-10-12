@@ -36,6 +36,8 @@ from .personality.adaptation import PersonalityAdapter
 from .checkin import CheckIn
 from .productivity import ProductivityStore
 from .productivity.talk import NotesTalk
+from .productivity.reminders import ReminderStore
+from .productivity.remind_talk import RemindTalk
 from .webapp import AuthStore, VaultJournal, WebApp
 from .discoveries import DailyInsights, load_dir as load_discoveries
 from .psychology.engine import PsychologyEngine
@@ -221,13 +223,16 @@ class Companion:
         wa = cfg.webapp
         self.productivity = ProductivityStore(data / "productivity.db", clock, pw)
         self._closers.append(self.productivity.close)
-        self.notes_talk = NotesTalk(self.productivity, clock, self.tz, phone_hint=bool(wa.get("enabled")))
+        self.reminders = ReminderStore(self.productivity, clock, cfg.timezone)
+        self.notes_talk = NotesTalk(self.productivity, clock, self.tz, phone_hint=bool(wa.get("enabled")), reminders_enabled=True)
+        self.remind_talk = RemindTalk(self.reminders, clock, cfg.timezone, name=lambda: self.onboarding.user_name(), phone_hint=bool(wa.get("enabled")))
         self.webapp = None
         if wa.get("enabled"):
             wh = str(wa.get("host", "127.0.0.1"))
             self.auth = AuthStore(data / "webapp_auth.json", clock)
             try:
-                self.webapp = WebApp(self.productivity, VaultJournal(self.vault), self.auth, clock, host=wh, port=int(wa.get("port", 8790)),
+                self.webapp = WebApp(self.productivity, VaultJournal(self.vault), self.auth, clock, reminders=self.reminders,
+                                     status=lambda: {"robot": "asleep" if self.director.asleep else "offline" if not self.behavior.host_online else "connected"}, host=wh, port=int(wa.get("port", 8790)),
                                      tls=None if wh in ("127.0.0.1", "localhost") else (str(cfg.tls_cert), str(cfg.tls_key)),
                                      allowed_hosts=[str(x) for x in wa.get("hosts", [])], name=lambda: self.onboarding.user_name())
             except Exception as e:
@@ -241,13 +246,14 @@ class Companion:
         self.conversation = ConversationEngine(
             self.llm, eff, self.state, clock, memory=self.memory, user_name=self.onboarding.user_name, tz=self.tz,
             dialogue=LinePicker(load_templates(sp), random.Random()), safety=self.gate, psychology=self.psychology,
-            learner=self.learner, memory_talk=self.memory_talk, insights=self.insights, checkin=self.checkin, notes_talk=self.notes_talk)
+            learner=self.learner, memory_talk=self.memory_talk, insights=self.insights, checkin=self.checkin, notes_talk=self.notes_talk, remind_talk=self.remind_talk)
         self.behavior = BehaviorEngine(self.personality, self.state, clock, random.Random())
         self.pipeline = VoicePipeline(self.client, stt or self._make_stt(), tts or self._make_tts(), self.conversation, clock,
                                       engine=self.behavior, onboarding=self.onboarding, lines=load_lines(sp))
         self.director = ProactiveDirector(self.behavior, self.conversation, self.pipeline, clock, memory=self.memory,
                                           state_store=self.state_store, psychology=self.psychology, insights=self.insights,
-                                          checkin=self.checkin, checkin_blocked=self.gate.recent)
+                                          checkin=self.checkin, checkin_blocked=self.gate.recent, reminders=self.reminders, remind_talk=self.remind_talk,
+                                          reminder_name=lambda: self.onboarding.user_name())
         self._closers += [self.pipeline.close, self.director.close]
         self._started = False
 

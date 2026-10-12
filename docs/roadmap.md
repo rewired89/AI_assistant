@@ -11,7 +11,7 @@
 - [~] Phase 8 voice: pipeline + fakes done and tested (sim, loopback TLS); LLM responder + proactive speech done against fakes + stub server; real STT/TTS/LLM runs, wake word pending
 - [~] Phase 9 psychology engine: implemented + synthetic-scenario tests; NEEDS clinician review before real use
 - [~] Part XVII Daily Psychology Discoveries: engine, validation, delivery, voice controls done (sim); 6 entries verified at abstract level, needs owner spot-check and more entries
-- [~] Productivity (voice notes, dictation, lists, phone app): notes + lists + phone app + journal tab done (sim/HTTP); reminders, audio notes, notifications next
+- [~] Productivity (voice notes, dictation, lists, phone app): notes + lists + phone app + journal tab done (sim/HTTP); reminders done (sim/HTTP, `docs/reminders.md`); audio notes, OS notifications next
 - [ ] Phase 6 rest, 7 memory, 8 AI + voice, 9 psychology, 10 personality tuning, 11 art, 12 Cubone on same core
 
 Next concrete steps: (1) board arrives: fill `hardware.md`, dump flash; (2) WebSocket+TLS transport with the same tests; (3) tamagotchi state model with bounded decay and persistence tests; (4) memory store with consent and deletion.

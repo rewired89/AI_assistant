@@ -81,8 +81,10 @@ def _pretty(name: str) -> str:
 
 
 class NotesTalk:
-    def __init__(self, store: ProductivityStore, clock=time.time, tz: tzinfo = timezone.utc, phone_hint: bool = False):
+    def __init__(self, store: ProductivityStore, clock=time.time, tz: tzinfo = timezone.utc, phone_hint: bool = False,
+                 reminders_enabled: bool = False):
         self.store, self.clock, self.tz, self.phone_hint = store, clock, tz, phone_hint
+        self.reminders_enabled = reminders_enabled                 # when reminders exist, RemindTalk handles "remind me"
         self._dict: dict | None = None
         self._pend: dict | None = None
         self._last_id: str | None = None
@@ -160,7 +162,7 @@ class NotesTalk:
         mm = COMPLETE.match(t)
         if mm:
             return self._item_action("complete", mm.group("item"), mm.group("list"), now, explicit=bool(mm.group("list")) or bool(re.search(r"\b(?:complete|completed|done|finished|off)\b", t, _I)))
-        if REMIND.search(t):
+        if REMIND.search(t) and not self.reminders_enabled:
             return NotesReply("I can't set reminders yet, so I haven't saved that. I can add it to a list if you tell me which one.")
         return None
 

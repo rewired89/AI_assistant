@@ -133,7 +133,7 @@ def test_export_and_delete_everything_including_audio_files(tmp_path):
     s.create_list("L", ["x"])
     e = s.export()
     assert len(e["notes"]) == 1 and e["lists"][0]["items"][0]["text"] == "x" and e["encrypted_at_rest"] is False
-    assert s.delete_everything() == {"notes": 1, "lists": 1}
+    assert s.delete_everything() == {"notes": 1, "lists": 1, "reminders": 0}
     assert s.notes() == [] and s.lists() == [] and not audio.exists()
 
 

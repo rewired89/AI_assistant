@@ -36,11 +36,15 @@ class DirectorConfig:
 class ProactiveDirector:
     def __init__(self, behavior: BehaviorEngine, conversation: ConversationEngine, pipeline: VoicePipeline,
                  clock: Callable[[], float], memory=None, state_store=None, config: DirectorConfig | None = None,
-                 rng: random.Random | None = None, psychology=None, insights=None, checkin=None, checkin_blocked=lambda: False):
+                 rng: random.Random | None = None, psychology=None, insights=None, checkin=None, checkin_blocked=lambda: False, reminders=None, remind_talk=None,
+                 reminder_name=lambda: None):
         self.behavior, self.conversation, self.pipeline, self.clock = behavior, conversation, pipeline, clock
         self.memory, self.state_store, self.cfg = memory, state_store, config or DirectorConfig()
         self.rng = rng or random.Random()
         self.psychology = psychology
+        self.reminders, self.remind_talk, self.reminder_name = reminders, remind_talk, reminder_name   # her reminders (ReminderStore, RemindTalk)
+        self._rem_active: dict | None = None
+        self._rem_last_tick = 0.0
         self.checkin, self.checkin_blocked = checkin, checkin_blocked      # CheckIn (optional) and a 'not now' test (safety signal, ...)
         self.insights = insights                            # DailyInsights (optional)
         self._insight: tuple | None = None                   # (Script, spoken?) being spoken right now
@@ -109,6 +113,7 @@ class ProactiveDirector:
             self._last_idle = now
             self._handle(self.behavior.react("idle_tick", memory_refs=self._memory_refs(now)), now)
         self._queue_followups(now)
+        self._deliver_reminders(now)
         self._deliver_insight(now)
         self._deliver_checkin(now)
         self._speak_pending(now)
@@ -180,6 +185,48 @@ class ProactiveDirector:
         elif self.pipeline.speak(script.text, "normal"):
             ins.commit(script, now, spoken=True)
             self.stats["insight_spoken"] += 1
+
+    def _deliver_reminders(self, now: float) -> None:
+        """Speaks the reminders she asked for. A reminder is marked spoken only after the speech really completed; if the robot is asleep,
+        offline, busy or the speech failed, the record says so and the phone keeps it. Reminders speak even in quiet mode (she asked for them);
+        her own quiet hours were applied when each occurrence was recorded."""
+        rs = self.reminders
+        if rs is None:
+            return
+        try:
+            if now - self._rem_last_tick >= 2.0:
+                self._rem_last_tick = now
+                rs.tick(now)
+            a = self._rem_active
+            if a is not None and self.pipeline.state is not State.SPEAKING:
+                self._rem_active = None
+                done = [r for k, r in self.pipeline.client.playback_results.items() if k not in a["streams"]]
+                ok = (self.pipeline.stats["interrupted"] == a["interrupted"] and self.pipeline.stats["tts_errors"] == a["errors"] and done
+                      and all(r.get("result") == "completed" for r in done))
+                rs.mark_robot(a["id"], "spoken" if ok else "failed")
+                self.stats["reminder_spoken" if ok else "reminder_failed"] += 1
+                return
+            if (a is not None or self.asleep or self._composing is not None or self._pending or self.pipeline.state is not State.IDLE
+                    or not self.behavior.host_online or self._battery != "ok" or self.checkin_blocked()):
+                return
+            for occ in rs.due_for_robot(now):
+                rem = rs.get(occ["reminder_id"])
+                if rem is None:
+                    continue
+                from ..productivity.reminders import compose
+                style = "playful" if self.behavior.p.value("playful") >= 0.6 else "gentle"
+                text = compose(rem, occ["due_at"], self.reminder_name(), style)
+                streams = set(self.pipeline.client.playback_results)
+                if self.pipeline.speak(text, "normal"):
+                    rs.mark_robot(occ["id"], "speaking", text)
+                    self._rem_active = {"id": occ["id"], "streams": streams, "interrupted": self.pipeline.stats["interrupted"],
+                                        "errors": self.pipeline.stats["tts_errors"]}
+                    if self.remind_talk is not None:
+                        self.remind_talk.note_spoken(occ["id"], now)
+                    self.stats["reminder_started"] += 1
+                return
+        except Exception:
+            self.stats["reminder_errors"] += 1                      # a reminder bug must never stop the companion's loop
 
     def _deliver_checkin(self, now: float) -> None:
         """One 'how was your day?' a day when nothing else is going on. Never right after a discovery, a safety signal or on

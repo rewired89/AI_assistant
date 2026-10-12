@@ -417,8 +417,15 @@ class ProductivityStore:
                 Path(a).unlink(missing_ok=True)
             n = self.db.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
             l = self.db.execute("SELECT COUNT(*) FROM lists").fetchone()[0]
+            rem = 0
+            try:
+                rem = self.db.execute("SELECT COUNT(*) FROM reminders").fetchone()[0]
+                self.db.execute("DELETE FROM occurrences")
+                self.db.execute("DELETE FROM reminders")
+            except sqlite3.OperationalError:
+                pass                                                  # reminders were never used
             self.db.execute("DELETE FROM items")
             self.db.execute("DELETE FROM lists")
             self.db.execute("DELETE FROM notes")
             self.db.commit()
-            return {"notes": n, "lists": l}
+            return {"notes": n, "lists": l, "reminders": rem}
