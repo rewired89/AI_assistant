@@ -18,6 +18,10 @@ python -m tools.mic_check --compare
 ```
 Speak both times. Send me the two lines of numbers (do not type them as commands). Play them with `aplay mic_file.wav` and `aplay mic_pipe.wav`.
 
+Fan or hum noise: the desk robot now removes steady background noise from the mic by default (`companion/speech/denoise.py`).
+Turn it off to compare: `python -m tools.desk_robot run --no-denoise`. It cannot remove changing noise (music, voices, door slams).
+Also lower the mic input volume in system sound settings if the fan is still loud.
+
 ## 2. Board arrives (do these in order, send me every output)
 1. Photograph both sides. Do NOT flash anything yet.
 2. Install the tool: `pip install esptool`

@@ -25,6 +25,7 @@ import yaml
 from companion.app import AppConfig, Companion, ConfigProblem
 from companion.application.clock import SystemClock
 from companion.application.ws_transport import client_ssl_context
+from companion.speech.denoise import DenoisedMic
 from companion.security import SecretStore
 from companion.speech.vad import rms
 from simulator import SimulatedDevice, Storage
@@ -135,14 +136,15 @@ def init(dir_: Path, llm_url: str, llm_model: str, stt_model: str | None, port: 
 
 
 def run(dir_: Path, mic=None, speaker=None, keys: "queue.Queue[str] | None" = None, stop: threading.Event | None = None,
-        out=print, view_port: int | None = 8765, mic_device: str | None = None, **companion_kwargs) -> int:
+        out=print, view_port: int | None = 8765, mic_device: str | None = None, denoise: bool = True,
+        **companion_kwargs) -> int:
     dir_ = Path(dir_)
     cfg = AppConfig.load(dir_ / "companion.yaml")
     clock = SystemClock()
     app = Companion(cfg, clock=clock, **companion_kwargs)
     stop = stop or threading.Event()
     own_mic, own_spk = mic is None, speaker is None
-    mic = mic or ArecordMic(mic_device)
+    mic = mic or (DenoisedMic(ArecordMic(mic_device)) if denoise else ArecordMic(mic_device))
     speaker = speaker or AplaySpeaker()
     dev = SimulatedDevice(None, Storage(dir_ / "flash.json"), clock)
     dev.on_speaker = speaker.write
@@ -271,6 +273,7 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--dir", default="dev")
     r.add_argument("--mic-device", help="arecord device name, from: arecord -l   e.g. plughw:1,0")
+    r.add_argument("--no-denoise", action="store_true", help="turn off fan/hum noise removal on the microphone")
     r.add_argument("--view-port", type=int, default=8765, help="0 = pick a free port, -1 = no face window")
     a = ap.parse_args(argv)
     try:
@@ -280,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         q: "queue.Queue[str]" = queue.Queue()
         threading.Thread(target=_stdin_keys, args=(q,), daemon=True).start()
-        return run(Path(a.dir), keys=q, view_port=None if a.view_port < 0 else a.view_port, mic_device=a.mic_device)
+        return run(Path(a.dir), keys=q, view_port=None if a.view_port < 0 else a.view_port, mic_device=a.mic_device, denoise=not a.no_denoise)
     except (ConfigProblem, FileExistsError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
