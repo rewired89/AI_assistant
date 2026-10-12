@@ -343,3 +343,21 @@ def test_unresponsive_device_counts_error_and_stays_usable(rig, device):
     device.power = P.AWAKE
     r.utter(); r.idle()
     assert r.responder.heard == ["what is your name"]
+
+
+def test_dev_hook_sees_the_transcript_and_empty_results_are_noted(rig):
+    heard = []
+    r = rig(stt=FakeRecognizer(["what is your name", ""]))
+    r.pipe.on_heard = heard.append
+    r.utter(); r.idle()
+    r.utter(); r.idle()
+    assert heard == ["what is your name", ""]
+    notes = [n for _, n in r.pipe.log]
+    assert "heard_text" in notes and "heard_nothing" in notes and r.pipe.notes_total == len(notes)
+
+
+def test_a_broken_dev_hook_cannot_break_the_pipeline(rig):
+    r = rig(stt=FakeRecognizer(["hello"]))
+    r.pipe.on_heard = lambda t: 1 / 0
+    r.utter(); r.idle()
+    assert r.responder.heard == ["hello"]

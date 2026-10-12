@@ -45,7 +45,8 @@
 | `tools/bench_stt.py` | Benchmark local Whisper: load time, real-time factor, memory, transcript |
 | `tools/check_llm.py`, `tests/companion/test_check_llm.py` | Check a remote Ollama server: reachable, model present, answer time |
 | `tools/desk_robot.py`, `tests/integration/test_desk_robot.py` | Simulated robot wired to laptop mic/speaker; init + run the whole companion by voice |
-| `tools/desk_view.py`, `tests/integration/test_desk_view.py` | Face window (original art) for the desk robot: local web page, Origin-checked WebSocket |
+| `tools/desk_view.py`, `tests/integration/test_desk_view.py` | Desk robot window: live face + mic meter + "You said", and the pixel sprite editor; local HTTP only, Host/Origin/header checked |
+| `companion/sprites.py`, `companion/sprites_default.py`, `assets/sprites/default.json`, `tests/companion/test_sprites.py`, `docs/sprites.md` | Sprite set format (strict validation, atomic save), starter art generator, the committed default set |
 | `tools/bench_tts.py` | Time a TTS voice and save a WAV to listen to |
 | `tools/fetch_models.py` | One-time Whisper model download |
 | `tests/companion/test_speech_engines.py` | Engine adapters: stubbed process/model, real espeak through the pipeline |

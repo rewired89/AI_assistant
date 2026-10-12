@@ -26,6 +26,7 @@ from companion.app import AppConfig, Companion, ConfigProblem
 from companion.application.clock import SystemClock
 from companion.application.ws_transport import client_ssl_context
 from companion.security import SecretStore
+from companion.speech.vad import rms
 from simulator import SimulatedDevice, Storage
 from simulator.ws_link import DeviceLink
 from tools.desk_view import ViewServer
@@ -114,8 +115,16 @@ def run(dir_: Path, mic=None, speaker=None, keys: "queue.Queue[str] | None" = No
                 if stop.wait(0.05):
                     return
                 continue
+            meter["level"] = rms(chunk)
             if dev.capture is not None:                      # the mic only matters while the device has it open
                 link.call(lambda c=chunk: dev.feed_mic(c))
+
+    meter = {"level": 0.0}
+    heard = {"text": "", "empty": False}
+
+    def on_heard(text: str) -> None:
+        heard["text"], heard["empty"] = text, not text
+    app.pipeline.on_heard = on_heard
 
     def snapshot() -> dict:
         pipe = app.pipeline
@@ -130,9 +139,12 @@ def run(dir_: Path, mic=None, speaker=None, keys: "queue.Queue[str] | None" = No
             anim = "sleeping"
         else:
             anim = dev.animation["name"] if dev.animation else "idle"
+        det = getattr(pipe, "_det", None)
         return {"anim": anim, "power": dev.power.value, "battery": dev.battery, "mic": bool(dev.state["config"]["mic_enabled"]),
                 "pipe": pipe.state.value, "stage": app.state.stage, "caption": caption,
-                "speaking": pipe.state.value == "speaking", "notes": [n for _, n in list(pipe.log)[-5:]]}
+                "speaking": pipe.state.value == "speaking", "notes": [n for _, n in list(pipe.log)[-5:]],
+                "level": meter["level"], "threshold": det.current_threshold if det else 0,
+                "heard": heard["text"], "heard_empty": heard["empty"]}
 
     def command(cmd: str, arg) -> None:
         if cmd == "press":

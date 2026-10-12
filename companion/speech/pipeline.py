@@ -139,6 +139,7 @@ class VoicePipeline:
         self._presses = 0
         self._device_sleeping = False
         self.on_reply: Callable[[Reply], None] | None = None   # told about each model reply (no audio, no transcript)
+        self.on_heard: Callable[[str], None] | None = None     # DEV RIGS ONLY (desk robot): the cleaned transcript, "" if none
         self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="voice")
         self._cap: Capture | None = None
         self._det: EndpointDetector | None = None
@@ -325,9 +326,16 @@ class VoicePipeline:
                 self.stats["stt_errors"] += 1
                 self._note(f"stt_error:{type(e).__name__}")
                 return self._start_speaking(self.lines["trouble_hearing"], "calm")
+            if self.on_heard is not None:
+                try:
+                    self.on_heard(text)
+                except Exception:
+                    pass
             if not text:
                 self.stats["empty_transcript"] += 1
+                self._note("heard_nothing")
                 return self._start_speaking(self.lines["didnt_hear"], "calm")
+            self._note("heard_text")
             return self._route(text)
         if self._timed_out(self.cfg.stt_timeout_s):
             self.stats["stt_timeouts"] += 1

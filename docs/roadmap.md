@@ -5,7 +5,7 @@
 - [~] Phase 4 protocol: codec, auth, simulated device, client done; wss transport + reconnect done (sim, loopback); binary audio frames done (sim); secret provisioning + rotation done (sim); OTA (signed A/B, trial, auto rollback) done (sim)
 - [~] Phase 5 power: state machine + persistence in simulator only; real hardware and measurements pending
 - [ ] Phase 2 minimal physical device (blocked on board)
-- [ ] Phase 3 sprite engine
+- [~] Phase 3 sprite engine: sprite format + browser pixel editor + preview done (desk rig only); device renderer and screen specs need the board
 - [~] Phase 6: tamagotchi state model + behavior engine done (tested); onboarding done (tested, scripted); habit recognition pending
 - [~] Phase 7 memory: store, vault, retention, extraction rules done; LLM extractor and a friendly review UI pending (CLI review tool exists)
 - [~] Phase 8 voice: pipeline + fakes done and tested (sim, loopback TLS); LLM responder + proactive speech done against fakes + stub server; real STT/TTS/LLM runs, wake word pending
