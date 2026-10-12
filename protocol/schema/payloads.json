@@ -82,7 +82,8 @@
     "power.sleeping": {"type":"object","required":["reason","wake_at"],"additionalProperties":false,"properties":{
       "reason":{"enum":["battery_saving","user_request","scheduled","idle","critical_battery"]},"wake_at":{"type":["string","null"]}}},
     "power.waking": {"type":"object","required":["cause"],"additionalProperties":false,"properties":{"cause":{"enum":["scheduled","button","host_request","reset"]}}},
-    "power.woke": {"type":"object","required":["cause"],"additionalProperties":false,"properties":{"cause":{"enum":["scheduled","button","host_request","reset"]}}},
+    "power.woke": {"type":"object","required":["cause"],"additionalProperties":false,"properties":{"cause":{"enum":["scheduled","button","host_request","reset"]},
+      "sleep_reason":{"enum":["battery_saving","user_request","scheduled","idle","critical_battery"]}}},
     "ota.progress": {"type":"object","required":["update_id","received","size"],"additionalProperties":false,"properties":{
       "update_id":{"$ref":"#/$defs/update_id"},"received":{"type":"integer","minimum":0},"size":{"type":"integer","minimum":1}}},
     "ota.verified": {"type":"object","required":["update_id","build"],"additionalProperties":false,"properties":{

@@ -88,3 +88,4 @@
 - `companion/speech/denoise.py`: `Denoiser` (streaming spectral gating), `DenoisedMic` wrapper used by `tools/desk_robot.py`.
 - `tools/deploy.py`: `build()` creates a service folder (tls, keys.json, device bundle, companion.yaml, ninetails.service).
 - `companion/personality/adaptation.py`: `PersonalityAdapter.observe(kind_counts)` bounded drift from activity counts; spoken controls in `learning/memory_talk.py`; wired in `companion/app.py` (`self.adapter`).
+- `power.woke.sleep_reason` (optional): set in `simulator/device.py::_wake`, read in `companion/application/proactive.py`; vector `protocol/vectors/sleep_and_wake.json`.

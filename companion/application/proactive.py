@@ -68,7 +68,8 @@ class ProactiveDirector:
             self._stimuli.append(("sleep_entering", {}))
         elif t == "power.woke":
             self.asleep = False
-            self._stimuli.append(("wake", {"cause": p["cause"], "sleep_reason": self._sleep_reason}))
+            # the device remembers why it slept, even across a host restart; our own memory of it is only a fallback
+            self._stimuli.append(("wake", {"cause": p["cause"], "sleep_reason": p.get("sleep_reason") or self._sleep_reason}))
             self._sleep_reason = None
         elif t == "touch.detected":
             self._stimuli.append(("touch", {}))

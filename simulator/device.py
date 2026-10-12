@@ -267,9 +267,10 @@ class SimulatedDevice:
     def _wake(self, cause: str) -> None:
         self._go(P.WAKING)
         self._emit("power.waking", {"cause": cause})
+        reason = self.state["sleep_reason"]
         self.state["wake_at"] = self.state["sleep_reason"] = None
         self._settle_after_wake()
-        self._emit("power.woke", {"cause": cause})
+        self._emit("power.woke", {"cause": cause, **({"sleep_reason": reason} if reason else {})})
         self._persist()
 
     def _settle_after_wake(self) -> None:

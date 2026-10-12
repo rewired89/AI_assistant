@@ -147,6 +147,17 @@ def test_waking_from_scheduled_battery_nap_explains_itself(world):
     assert "woke_from_battery_saving" in w.llm.calls[0]["system"] or "awake again after a nap" in w.llm.calls[0]["system"]
 
 
+def test_host_restart_during_a_nap_still_explains_the_wake(world):
+    """Spec 33: the device remembers why it slept; a host that restarted in between must not lose that."""
+    w = world(llm=FakeLanguageModel(["I'm awake again after my nap."]), proactive="never")
+    wake = (datetime.fromtimestamp(w.clock.t, timezone.utc) + timedelta(seconds=40)).isoformat(timespec="seconds")
+    w.r.client.request("power.sleep", {"reason": "battery_saving", "requested_by": "user", "wake_at": wake})
+    w.drive(5)
+    assert w.d.asleep
+    w.d._sleep_reason = None                              # the host forgot (as after a restart); only the device knows
+    assert w.drive(120, stop=lambda: w.d.stats["spoken:greet_after_battery_saving"] >= 1, coarse=2.0)
+
+
 def test_touch_gets_a_warm_reply_only_while_awake(world):
     w = world(llm=FakeLanguageModel(["Hehe, that tickles!"] * 5), proactive="never")
     w.r.client.transport._take(w.device.press_button("single"))     # (button is not touch: ignored)

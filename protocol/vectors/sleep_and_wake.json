@@ -77,7 +77,8 @@
     },
     {
      "payload": {
-      "cause": "button"
+      "cause": "button",
+      "sleep_reason": "user_request"
      },
      "type": "power.woke"
     },
@@ -207,7 +208,8 @@
     },
     {
      "payload": {
-      "cause": "scheduled"
+      "cause": "scheduled",
+      "sleep_reason": "scheduled"
      },
      "type": "power.woke"
     },
