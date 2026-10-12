@@ -1,0 +1,53 @@
+{
+  "character": {
+    "id": "1ce32bdd-f854-4997-aa2b-ed685052dc9e",
+    "name": "Idle",
+    "prompt": "A cute, small, magical nine-tailed fox companion in charming 2D pixel art. She has soft cream-colored fur with warm golden-orange accents, large fluffy pointed ears with coral-pink inner fur, big expressive dark amber eyes, rosy cheeks, and a tiny heart-shaped nose. Her most distinctive feature is her nine fluffy tails, fanning out behind her like a soft golden-orange sunburst with pale cream tips. Her body is small and rounded, with tiny paws and a fluffy chest. She wears a little teal ribbon with a pink heart charm around her neck. Her expression is gentle, curious, affectionate, and slightly mischievous. Cozy magical creature aesthetic, clean pixel clusters, crisp dark outlines, limited warm pastel color palette, consistent proportions, readable silhouette, simple shading, transparent background. Full-body character, facing slightly toward the viewer, sitting in a relaxed pose. Designed as a tiny virtual pet for a handheld AI companion, recognizable at 32\u00d732 to 64\u00d764 pixels. Original character design, not a direct copy of any existing Pok\u00e9mon.",
+    "size": {
+      "width": 48,
+      "height": 48
+    },
+    "directions": 8,
+    "view": "low top-down"
+  },
+  "spritesheet": {
+    "path": "A_cute_small_magical_nin-Idle.png",
+    "cell_size": {
+      "width": 68,
+      "height": 68
+    },
+    "sheet_size": {
+      "width": 612,
+      "height": 136
+    },
+    "columns": 9,
+    "pivot": "cell-center",
+    "rows": [
+      {
+        "row": 0,
+        "type": "rotations",
+        "frame_count": 8,
+        "directions": [
+          "south",
+          "south-east",
+          "east",
+          "north-east",
+          "north",
+          "north-west",
+          "west",
+          "south-west"
+        ]
+      },
+      {
+        "row": 1,
+        "type": "animation",
+        "frame_count": 9,
+        "animation": "Create a close-up face sprite of my existing nine-tailed fox character, Nine Tails, using the exact same character design, color palette, pixel-art style, eye shape, fur colors, and proportions as the reference character.\n\nShow ONLY her head and face, including her pointed ears and a small amount of fluffy cheek fur. Do not show her body, paws, legs, or tails.\n\nExpression: relaxed, happy, gentle closed-mouth smile, bright dark amber eyes, subtle rosy cheeks, friendly and affectionate personality.\n\nFront-facing view, centered composition, symmetrical placement, clean pixel clusters, crisp outlines, simple shading, transparent background. Designed for a tiny virtual pet screen, with a face that remains readable at 32\u00d732 to 64\u00d764 pixels.\n\nKeep the character's identity and facial proportions consistent. Change only the facial expression between variations. No text, no accessories added, no background, no extra characters.",
+        "animation_group_id": "22284c24-8cdf-4f29-b445-a04dce726377",
+        "direction": "south"
+      }
+    ]
+  },
+  "export_version": "1.0",
+  "export_date": "2026-10-12T02:50:58.425792+00:00"
+}

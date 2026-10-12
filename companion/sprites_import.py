@@ -39,6 +39,47 @@ def read_png(path: str | Path):
     return im.size, list(getattr(im, "get_flattened_data", im.getdata)())
 
 
+def split_sheet(png: str | Path, meta: str | Path, out_dir: str | Path) -> dict[str, list[Path]]:
+    """Cuts a sprite-sheet export (a PNG plus its JSON: cell size, columns, rows of 'rotations' / 'animation') into one
+    PNG per picture, cropped from the padded cell back to the character's own size. Returns {name: [files]} where
+    rotations are named by direction (south.png ...) and an animation row by its row type (idle_0.png, idle_1.png ...)."""
+    import json
+    try:
+        from PIL import Image
+    except ImportError as e:
+        raise sp.SpriteError("Pillow is needed to read PNG files: pip install pillow") from e
+    try:
+        m = json.loads(Path(meta).read_text())
+        cw, ch = m["spritesheet"]["cell_size"]["width"], m["spritesheet"]["cell_size"]["height"]
+        w, h = m["character"]["size"]["width"], m["character"]["size"]["height"]
+        label = str(m["character"].get("name", "anim")).lower().replace(" ", "_")[:20] or "anim"
+        rows = m["spritesheet"]["rows"]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise sp.SpriteError(f"cannot read the sheet description {meta}: {type(e).__name__}") from None
+    sheet = Image.open(png).convert("RGBA")
+    ox, oy = (cw - w) // 2, (ch - h) // 2
+    out, result = Path(out_dir), {}
+    out.mkdir(parents=True, exist_ok=True)
+    for r in rows:
+        if not isinstance(r, dict) or not isinstance(r.get("frame_count"), int) or not 0 < r["frame_count"] <= 64:
+            raise sp.SpriteError("bad row in the sheet description")
+        files = []
+        for i in range(r["frame_count"]):
+            x, y = i * cw, r["row"] * ch
+            if x + cw > sheet.width or y + ch > sheet.height:
+                raise sp.SpriteError("the sheet is smaller than its description says")
+            frame = sheet.crop((x + ox, y + oy, x + ox + w, y + oy + h))
+            if r.get("type") == "rotations":
+                name = str(r.get("directions", [])[i]).replace("/", "_")
+                path = out / f"{name}.png"
+            else:
+                path = out / f"{label}_{i}.png"
+            frame.save(path)
+            files.append(path)
+        result[r.get("type", "row") if r.get("type") != "rotations" else "rotations"] = files
+    return result
+
+
 def _dist(a, b) -> int:
     return sum((x - y) ** 2 for x, y in zip(a, b))
 
@@ -107,17 +148,20 @@ def pick_colors(palette: list[tuple]) -> dict[str, int]:
 
 
 def build_set(views: dict[str, str | Path], name: str = "default", screen: dict | None = None,
-              frames: dict[str, list[str | Path]] | None = None, frame_ms: int = 120) -> dict:
+              frames: dict[str, list[str | Path]] | None = None, frame_ms: int = 120,
+              idle_frames: list[str | Path] | None = None, idle_ms: int = 200) -> dict:
     missing = [v for v in VIEWS if v not in views]
     if missing:
         raise sp.SpriteError(f"missing views: {missing}")
     loaded = {v: read_png(views[v]) for v in VIEWS}
     extra = {a: [read_png(p) for p in paths] for a, paths in (frames or {}).items()}
-    sizes = {s for s, _ in loaded.values()} | {s for fs in extra.values() for s, _ in fs}
+    idle_loaded = [read_png(p) for p in (idle_frames or [])]
+    extra_all = [fr for fs in extra.values() for fr in fs] + idle_loaded
+    sizes = {s for s, _ in loaded.values()} | {s for s, _ in extra_all}
     if len(sizes) != 1:
         raise sp.SpriteError(f"all pictures must have the same size, found {sorted(sizes)}")
     (w, h), = sizes
-    pals, mapping = build_palette([px for _, px in loaded.values()] + [px for fs in extra.values() for _, px in fs])
+    pals, mapping = build_palette([px for _, px in loaded.values()] + [px for _, px in extra_all])
     R = {v: rows_from(loaded[v][0], loaded[v][1], mapping) for v in VIEWS}
     F, A, B, L, Rt = R["front"], R["right45"], R["left45"], R["left"], R["right"]
     col = pick_colors(pals)
@@ -167,6 +211,29 @@ def build_set(views: dict[str, str | Path], name: str = "default", screen: dict 
         "reflective": [fr(L, 1300), fr(shift(L, 0, 1), 1300)],
         "offline": [fr(greyed(shift(A, 0, 2)), 1500)],
     }
+    if len(idle_loaded) == 9:
+        # Real animation frames: 0 eyes open + small "o" mouth, 1 eyes squeezed shut (laughing), 2 open smile, 3 tiny open mouth,
+        # 4/6 neutral, 5 closed line mouth, 7 smile with tongue, 8 closed smile. Expressions come from these, not from shifting.
+        I = [rows_from(s, px, mapping) for s, px in idle_loaded]  # noqa: E741
+        anims.update({
+            "idle": [fr(r, idle_ms) for r in I],
+            "talking": [fr(I[2], 150), fr(I[5], 150), fr(I[2], 150), fr(I[4], 150)],
+            "eating": [fr(I[2], 180), fr(I[5], 180)],
+            "happy": [fr(I[8], 170), fr(stamp(shift(I[7], 0, -3), "sparkle", ox, oy, C["gold"]), 170), fr(I[8], 170), fr(shift(I[7], 0, -3), 170)],
+            "excited": [fr(shift(I[2], -1, 0), 110), fr(shift(I[8], 1, -3), 110), fr(shift(I[2], 1, 0), 110), fr(shift(I[8], -1, -3), 110)],
+            "celebratory": [fr(stamp(shift(I[1], 0, -3), "sparkle", ox, oy, C["gold"]), 160), fr(I[2], 160),
+                            fr(stamp(shift(I[1], 0, -3), "sparkle", 1, oy, C["gold"]), 160), fr(I[8], 160)],
+            "affectionate": [fr(stamp(I[8], "heart", ox, oy, C["coral"]), 500), fr(stamp(shift(I[1], 0, 1), "heart", ox, oy - 1, C["coral"]), 500)],
+            "listening": [fr(stamp(I[4], "wave", ox, oy + 2, C["teal"]), 450), fr(stamp(shift(I[6], 0, -1), "wave", ox + 2, oy + 2, C["teal"]), 450)],
+            "surprised": [fr(stamp(shift(I[0], 0, -2), "exclaim", ox + 3, oy, C["ink"]), 350), fr(stamp(I[0], "exclaim", ox + 3, oy, C["ink"]), 350)],
+            "sad": [fr(stamp(shift(I[3], 0, 2), "tear", 17, 24, C["teal"]), 900), fr(shift(I[6], 0, 3), 900)],
+            "angry": [fr(stamp(shift(I[6], -1, 0), "anger", ox, oy, C["ink"]), 120), fr(stamp(shift(I[6], 1, 0), "anger", ox, oy, C["ink"]), 120)],
+            "sleepy": [fr(shift(I[3], 0, 2), 1000), fr(shift(I[1], 0, 3), 1000)],
+            "sleeping": [fr(stamp(shift(I[1], 0, 3), "z_small", ox + 2, oy + 3, C["ink"]), 900), fr(stamp(shift(I[1], 0, 3), "z", ox, oy, C["ink"]), 900)],
+            "curious": [fr(A, 700), fr(I[0], 500), fr(B, 700), fr(I[0], 500)],
+        })
+    elif idle_loaded:
+        anims["idle"] = [fr(rows_from(s, px, mapping), idle_ms) for s, px in idle_loaded][:sp.MAX_FRAMES]
     out = {a: {"loop": a != "waking", "frames": f} for a, f in anims.items()}
     for a, fs in extra.items():                           # real frames from the art tool replace the generated motion
         out[a] = {"loop": True, "frames": [fr(rows_from(size, px, mapping), frame_ms) for size, px in fs][:sp.MAX_FRAMES]}

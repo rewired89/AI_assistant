@@ -24,8 +24,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--name", default="default")
     ap.add_argument("--anim", action="append", default=[], help="NAME=glob of numbered PNG frames, e.g. idle=exports/idle_*.png")
     ap.add_argument("--frame-ms", type=int, default=120)
+    ap.add_argument("--idle-frames", help="glob of the 9 real idle frames (see split-sheet); gives real expressions")
+    ap.add_argument("--idle-ms", type=int, default=200)
+    ap.add_argument("--split-sheet", nargs=2, metavar=("SHEET_PNG", "EXPORT_JSON"),
+                    help="first cut a sprite-sheet export into PNGs inside --dir (rotations and the animation row)")
     a = ap.parse_args(argv)
     try:
+        if a.split_sheet:
+            parts = si.split_sheet(a.split_sheet[0], a.split_sheet[1], Path(a.dir) / "sheet")
+            print("cut", {k: len(v) for k, v in parts.items()}, "into", Path(a.dir) / "sheet")
+            if not a.out or a.out == "-":
+                return 0
         views = {v: Path(a.dir) / f"{v}.png" for v in si.VIEWS}
         frames = {}
         for spec in a.anim:
@@ -34,7 +43,10 @@ def main(argv: list[str] | None = None) -> int:
             if not files:
                 raise sp.SpriteError(f"no files match {pattern!r}")
             frames[name] = files
-        doc = si.build_set(views, a.name, frames=frames, frame_ms=a.frame_ms)
+        idle = sorted(glob.glob(a.idle_frames)) if a.idle_frames else None
+        if a.idle_frames and not idle:
+            raise sp.SpriteError(f"no files match {a.idle_frames!r}")
+        doc = si.build_set(views, a.name, frames=frames, frame_ms=a.frame_ms, idle_frames=idle, idle_ms=a.idle_ms)
         sp.save(a.out, doc)
     except (sp.SpriteError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
