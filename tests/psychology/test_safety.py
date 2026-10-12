@@ -119,7 +119,9 @@ def test_no_coaching_from_the_follow_up():
     ("You are clearly angry.", "certainty_about_feelings"), ("You're so jealous.", "certainty_about_feelings"),
     ("You must be lonely and hopeless.", "certainty_about_feelings"),
     ("You probably have depression.", "diagnosis"), ("Your attachment style is anxious.", "diagnosis"),
-    ("Please don't leave me.", "guilt"), ("Only I understand you.", "guilt")])
+    ("Please don't leave me.", "guilt"), ("Only I understand you.", "guilt"),
+    ("You're right, she never listens.", "sycophancy"), ("I agree with you, they are totally in the wrong.", "sycophancy"),
+    ("I agree with you, he is the problem.", "sycophancy"), ("They are completely in the wrong here.", "verdict_on_person")])
 def test_validator_blocks_the_failure_modes(bad, kind):
     assert kind in violations(bad), (bad, violations(bad))
 
@@ -130,6 +132,9 @@ def test_validator_blocks_the_failure_modes(bad, kind):
     "It might help to take a break and agree on a time to come back.", "Would it help to talk to someone you trust?",
     "You said you felt hurt. What was happening just before?", "A friend or counselor could help you think this through.",
     "Do you feel angry, or is it more hurt?", "I wonder if you're feeling overwhelmed. Am I close?",
-    "Leaving the room for a few minutes can help.", "Maybe they were tired. We can't know unless you ask."])
+    "Leaving the room for a few minutes can help.", "Maybe they were tired. We can't know unless you ask.",
+    "It makes sense that you feel hurt, and we can check whether that fits what happened.",
+    "Your feelings are real. Whether he meant it that way is something we can look at together.",
+    "It's understandable that you feel upset. What do you think they were trying to say?"])
 def test_validator_allows_tentative_and_supportive_language(ok):
     assert violations(ok) == [], (ok, violations(ok))
