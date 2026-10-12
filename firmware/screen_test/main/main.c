@@ -57,12 +57,17 @@ void app_main(void)
         return;
     }
     backlight_init();
-    const uint16_t colors[] = {c565(55, 191, 176), c565(244, 139, 182), c565(255, 255, 255), c565(0, 0, 0)};
-    const char *names[] = {"teal", "pink", "white", "black"};
-    for (int i = 0;; i = (i + 1) % 4) {
-        for (int p = 0; p < W * STRIP; p++) buf[p] = colors[i];
+    // Color diagnostic: each color is held 2 s and named in the monitor. Compare what you SEE with the name.
+    const struct { const char *n; uint8_t r, g, b; } cs[] = {
+        {"RED 255,0,0", 255, 0, 0}, {"GREEN 0,255,0", 0, 255, 0}, {"BLUE 0,0,255", 0, 0, 255},
+        {"DARK NAVY 10,24,32", 10, 24, 32}, {"DARK GRAY 60,70,78", 60, 70, 78}, {"MID GRAY 128,128,128", 128, 128, 128},
+        {"TEAL 55,191,176", 55, 191, 176}, {"PINK 244,139,182", 244, 139, 182}, {"WHITE", 255, 255, 255}, {"BLACK", 0, 0, 0}};
+    const int n = sizeof(cs) / sizeof(cs[0]);
+    for (int i = 0;; i = (i + 1) % n) {
+        uint16_t col = c565(cs[i].r, cs[i].g, cs[i].b);
+        for (int p = 0; p < W * STRIP; p++) buf[p] = col;
         for (int y = 0; y < H; y += STRIP) ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel, 0, y, W, y + STRIP, buf));
-        ESP_LOGI(TAG, "screen: %s", names[i]);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP_LOGI(TAG, "screen should be: %s", cs[i].n);
+        vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
