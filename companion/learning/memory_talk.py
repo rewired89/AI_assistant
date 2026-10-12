@@ -29,6 +29,10 @@ STOP_ROUTINES = re.compile(r"\b(stop|quit|don'?t|do not) (noticing|tracking|lear
 START_ROUTINES = re.compile(r"\b(start|resume|begin|go back to|you can) (noticing|tracking|learning) (my |the )?(routines?|habits?)( again)?\b", _I)
 FORGET_THAT = re.compile(r"^\W*(please )?(forget|delete|remove|erase) (that|it|this)\W*$", _I)
 FORGET_TOPIC = re.compile(r"^\W*(please )?(forget|delete|remove|erase) (?:about |that i |that |the fact that |my |the )?(?P<topic>[^.!?]{2,80})", _I)
+HOW_CHANGED = re.compile(r"\bhow (have|did) you (changed?|grown|been changing)\b|\bhave you (changed|been changing)\b", _I)
+RESET_SELF = re.compile(r"\b(reset|undo) (your |the )?(personality|changes|how you act)\b|\bgo back to (how|the way) you (were|started|used to be)\b", _I)
+STOP_ADAPT = re.compile(r"\b(stop|quit|don'?t|do not) (changing|adapting|adjusting)( (your|the) (personality|way you act))?\b|\bturn off (the )?(adapting|personality changes)\b", _I)
+START_ADAPT = re.compile(r"\b(start|resume|begin|you can) (changing|adapting)( again)?\b", _I)
 NEGATED = re.compile(r"\b(don'?t|do not|never|not to|didn'?t|can'?t|cannot|won'?t) (ever )?(forget|delete)\b|\bforget (to|about it later)\b", _I)
 
 ASK_CLEAR = "That would delete everything I remember about you. Are you sure?"
@@ -44,8 +48,9 @@ def _say(rec: dict) -> str:
 class MemoryTalk:
     CONFIRM_WINDOW_S = 90.0                                  # a "yes" only counts shortly after the question
 
-    def __init__(self, memory, learner=None, max_spoken: int = 4, clock=time.time):
+    def __init__(self, memory, learner=None, max_spoken: int = 4, clock=time.time, adapter=None):
         self.memory, self.learner, self.max_spoken, self.clock = memory, learner, max_spoken, clock
+        self.adapter = adapter                                # PersonalityAdapter (optional)
         self._n = 0
         self._pending: dict | None = None
         self._last_saved: tuple[str, int] | None = None
@@ -105,6 +110,18 @@ class MemoryTalk:
         if NEGATED.search(utterance):
             return None
         t = utterance.strip()
+        if self.adapter is not None:
+            if HOW_CHANGED.search(t):
+                return Reply(self.adapter.describe(), "calm", interaction="none")
+            if RESET_SELF.search(t):
+                self._ask(action="reset_self")
+                return Reply("Do you want me to go back to exactly how I started?", "calm", interaction="none")
+            if STOP_ADAPT.search(t):
+                self.adapter.set_enabled(False)
+                return Reply("Okay, I'll stay just as I am and I've undone any changes.", "calm", interaction="none")
+            if START_ADAPT.search(t):
+                self.adapter.set_enabled(True)
+                return Reply("Okay, I'll change a little as we spend time together. You can ask how, or tell me to stop.", "calm", interaction="none")
         if LIST_ROUTINES.search(t):
             return self._list_routines(Reply)
         if LIST_ALL.search(t):
@@ -159,6 +176,9 @@ class MemoryTalk:
                 except MemoryError_:
                     pass
             return Reply("Okay, I've forgotten it.", "calm", interaction="none")
+        if act == "reset_self" and self.adapter is not None:
+            self.adapter.reset()
+            return Reply("Okay, I'm back to how I started.", "calm", interaction="none")
         if act == "routines":
             n = self.learner.forget_routines() if self.learner else 0
             return Reply("Okay, I've forgotten the routines I'd noticed." if n else "I hadn't noticed any routines yet.", "calm", interaction="none")

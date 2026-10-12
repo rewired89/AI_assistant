@@ -32,6 +32,7 @@ from .behavior import BehaviorEngine
 from .learning import MemoryTalk, RoutineLearner
 from .memory import MemoryStore, ReflectionVault
 from .personality import config as pc
+from .personality.adaptation import PersonalityAdapter
 from .psychology.engine import PsychologyEngine
 from .psychology.safety import SafetyGate
 from .psychology.settings import PsychologySettings
@@ -40,7 +41,7 @@ from .speech import VoicePipeline, load_lines
 from .tamagotchi import StateStore, load_rules
 
 ROOT = Path(__file__).resolve().parent.parent
-KNOWN = {"species", "user_id", "timezone", "data_dir", "device_id", "secrets", "listen", "tls", "stt", "tts", "llm", "memory"}
+KNOWN = {"species", "user_id", "timezone", "data_dir", "device_id", "secrets", "listen", "tls", "stt", "tts", "llm", "memory", "adaptation"}
 
 
 class ConfigProblem(Exception):
@@ -63,6 +64,7 @@ class AppConfig:
     tts: dict = field(default_factory=dict)
     llm: dict = field(default_factory=dict)
     memory: dict = field(default_factory=dict)
+    adaptation: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path | str) -> "AppConfig":
@@ -93,7 +95,7 @@ class AppConfig:
                   tls_cert=path_of(tls["cert"]), tls_key=path_of(tls["key"]), data_dir=path_of(need("data_dir")),
                   user_id=str(raw.get("user_id", "her")), timezone=str(raw.get("timezone", "UTC")),
                   host=str(listen.get("host", "127.0.0.1")), port=int(listen.get("port", 8443)),
-                  stt=raw.get("stt") or {}, tts=raw.get("tts") or {}, llm=raw.get("llm") or {}, memory=raw.get("memory") or {})
+                  stt=raw.get("stt") or {}, tts=raw.get("tts") or {}, llm=raw.get("llm") or {}, memory=raw.get("memory") or {}, adaptation=raw.get("adaptation") or {})
         cfg.validate()
         return cfg
 
@@ -199,12 +201,17 @@ class Companion:
             self.settings, self.vault, clock, gate=self.gate, tz=self.tz, llm=self.llm,
             feature=lambda: eff()["behavior"]["psychological_growth_features"])
         self.learner = RoutineLearner(data / "routines.json", clock, self.tz, self.memory)
-        self.memory_talk = MemoryTalk(self.memory, self.learner, clock=clock)
+        self.personality = pc.Personality(eff())
+        ad = self.cfg.adaptation
+        if set(ad) - {"enabled"} or not isinstance(ad.get("enabled", True), bool):
+            raise ConfigProblem("adaptation only accepts: enabled: true|false")
+        self.adapter = PersonalityAdapter(data / "personality_drift.json", self.personality, clock, self.tz,
+                                          enabled=ad.get("enabled", True))
+        self.memory_talk = MemoryTalk(self.memory, self.learner, clock=clock, adapter=self.adapter)
         self.conversation = ConversationEngine(
             self.llm, eff, self.state, clock, memory=self.memory, user_name=self.onboarding.user_name, tz=self.tz,
             dialogue=LinePicker(load_templates(sp), random.Random()), safety=self.gate, psychology=self.psychology,
             learner=self.learner, memory_talk=self.memory_talk)
-        self.personality = pc.Personality(eff())
         self.behavior = BehaviorEngine(self.personality, self.state, clock, random.Random())
         self.pipeline = VoicePipeline(self.client, stt or self._make_stt(), tts or self._make_tts(), self.conversation, clock,
                                       engine=self.behavior, onboarding=self.onboarding, lines=load_lines(sp))
@@ -242,6 +249,7 @@ class Companion:
 
     def step(self) -> None:
         self.personality.cfg = self.onboarding.effective_config()      # onboarding answers take effect live
+        self.adapter.observe(self.state.kind_counts)
         self.pipeline.poll()
         self.director.tick()
         if not self.director.asleep:

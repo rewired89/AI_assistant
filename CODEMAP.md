@@ -87,3 +87,4 @@
 - `assets/sprites/{egg,baby}.json` + `source_egg|source_baby/`: stage sprite sets; `tools/desk_view.py` `ViewServer.sprite_doc(stage)` / `STAGE_FILES` picks one. `docs/your-checklist.md`: mic test and board arrival steps.
 - `companion/speech/denoise.py`: `Denoiser` (streaming spectral gating), `DenoisedMic` wrapper used by `tools/desk_robot.py`.
 - `tools/deploy.py`: `build()` creates a service folder (tls, keys.json, device bundle, companion.yaml, ninetails.service).
+- `companion/personality/adaptation.py`: `PersonalityAdapter.observe(kind_counts)` bounded drift from activity counts; spoken controls in `learning/memory_talk.py`; wired in `companion/app.py` (`self.adapter`).

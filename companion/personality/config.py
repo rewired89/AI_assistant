@@ -92,8 +92,12 @@ class Personality:
 
     def __init__(self, cfg: dict):
         self.cfg = validate(copy.deepcopy(cfg))
-        self.baseline = dict(cfg["traits"])
         self.drift = {t: 0.0 for t in _TRAITS}
+
+    @property
+    def baseline(self) -> dict:
+        """Follows the live config (onboarding answers can change it); drift rides on top."""
+        return self.cfg["traits"]
 
     def adapt(self, trait: str, delta: float) -> float:
         if trait not in self.drift:

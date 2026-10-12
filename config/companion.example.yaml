@@ -25,3 +25,5 @@ llm:
 memory:
   encrypt: false              # true needs passphrase_env, the NAME of an env var holding the passphrase
   passphrase_env: NINETAILS_MEMORY_PASSPHRASE
+adaptation:
+  enabled: true               # tiny, capped, reversible change from how she plays with it; she can say 'stop changing'
