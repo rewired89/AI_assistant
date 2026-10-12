@@ -40,11 +40,13 @@ def check(mic, seconds: float = 5.0, out=print, per_line_s: float = 0.2) -> dict
         verdict = "SILENT: audio arrives but it is all zeros. The microphone is muted or its input volume is 0 (check alsamixer / system sound settings, or the wrong device)."
     elif peak < 300:
         verdict = "VERY QUIET: raise the input volume, or speak closer."
-    elif peak > 12000:
+    elif sorted(levels)[len(levels) // 2] > 12000:      # judged on the typical level, not one startup click
         verdict = "TOO LOUD: the level is very high (normal speech is roughly 1000 to 6000). Lower the input volume; loud, clipped audio makes speech detection and recognition worse."
     else:
         verdict = "OK: the microphone works."
-    return {"verdict": verdict, "peak": peak, "status": status}
+    med = sorted(levels)[len(levels) // 2] if levels else 0.0
+    out(f"levels: median {med:.0f}, peak {peak:.0f} (quiet room should be well under 500 median)")
+    return {"verdict": verdict, "peak": peak, "median": med, "status": status}
 
 
 def main(argv: list[str] | None = None) -> int:

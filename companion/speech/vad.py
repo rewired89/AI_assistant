@@ -20,7 +20,8 @@ def rms(pcm: bytes) -> float:
     if n == 0:
         return 0.0
     samples = struct.unpack(f"<{n}h", pcm[: n * 2])
-    return math.sqrt(sum(x * x for x in samples) / n)
+    mean = sum(samples) / n                    # some mics sit on a constant offset; that is not sound
+    return math.sqrt(sum((x - mean) ** 2 for x in samples) / n)
 
 
 class EndpointDetector:

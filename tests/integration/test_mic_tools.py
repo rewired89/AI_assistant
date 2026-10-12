@@ -68,3 +68,26 @@ def test_the_dying_recorder_is_restarted_once(tmp_path):
             break
     mic.close()
     assert got and mic.restarts == 1
+
+
+def test_dc_offset_is_not_loudness():
+    import struct
+    from companion.speech.vad import rms
+    assert rms(struct.pack("<320h", *([9000] * 320))) < 1
+
+
+def test_one_loud_click_is_not_too_loud():
+    import struct
+    from tools.mic_check import check
+    quiet, click = struct.pack("<320h", *([40, -40] * 160)), struct.pack("<320h", *([20000, -20000] * 160))
+
+    class M:
+        def __init__(self):
+            self.n = 0
+        def read(self):
+            self.n += 1
+            return click if self.n == 1 else quiet
+        def status(self):
+            return "ok"
+    r = check(M(), seconds=0.3, out=lambda *_: None)
+    assert not r["verdict"].startswith("TOO LOUD")
