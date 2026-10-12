@@ -9,6 +9,12 @@ python -m companion --config config/companion.yaml
 ## Where things run
 The language model runs on the Minisforum (Ollama there), not on a laptop: a 3B model froze a 5.7 GB laptop. The companion only sends text to `llm.url`, which must be a home-network address (private IP). On the Minisforum, Ollama must listen on the network: set `OLLAMA_HOST=0.0.0.0` for its service and allow port 11434 from the home network only. Ollama has no login, so anyone on that network can use it; keep the router firewall closed to the internet. Check the link from any machine with `python -m tools.check_llm --config config/companion.yaml`.
 
+## Run it as a service on the Minisforum
+```powershell
+python -m tools.deploy init --dir ~/nine-tails --host-ip 192.168.1.42 --stt-model models/whisper-base.en --tts-model models/kokoro
+```
+Creates certificates for that IP, keys, the robot's provisioning bundle, `companion.yaml` (Ollama on the same machine) and `ninetails.service`; it prints the exact `systemctl` and `ufw` commands. Never overwrites a folder. Tested by generating and validating the files only; the service itself has not been run on the Minisforum.
+
 ## Try it by voice before the hardware exists: the desk robot
 `tools/desk_robot.py` wires the SIMULATED robot to your computer's microphone (`arecord`) and speaker (`aplay`) and runs the whole companion in one process. It is a test rig, not hardware: no screen, battery or real power behavior. Use headphones, or the speaker leaks into the mic.
 ```powershell
