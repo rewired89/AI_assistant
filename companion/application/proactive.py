@@ -36,11 +36,12 @@ class DirectorConfig:
 class ProactiveDirector:
     def __init__(self, behavior: BehaviorEngine, conversation: ConversationEngine, pipeline: VoicePipeline,
                  clock: Callable[[], float], memory=None, state_store=None, config: DirectorConfig | None = None,
-                 rng: random.Random | None = None, psychology=None, insights=None):
+                 rng: random.Random | None = None, psychology=None, insights=None, checkin=None, checkin_blocked=lambda: False):
         self.behavior, self.conversation, self.pipeline, self.clock = behavior, conversation, pipeline, clock
         self.memory, self.state_store, self.cfg = memory, state_store, config or DirectorConfig()
         self.rng = rng or random.Random()
         self.psychology = psychology
+        self.checkin, self.checkin_blocked = checkin, checkin_blocked      # CheckIn (optional) and a 'not now' test (safety signal, ...)
         self.insights = insights                            # DailyInsights (optional)
         self._insight: tuple | None = None                   # (Script, spoken?) being spoken right now
         self._queued_followups: set[str] = set()
@@ -109,6 +110,7 @@ class ProactiveDirector:
             self._handle(self.behavior.react("idle_tick", memory_refs=self._memory_refs(now)), now)
         self._queue_followups(now)
         self._deliver_insight(now)
+        self._deliver_checkin(now)
         self._speak_pending(now)
         if self.state_store is not None and (saw_interaction or now - self._last_save >= self.cfg.save_interval_s):
             self.state_store.save(self.behavior.state)
@@ -178,6 +180,22 @@ class ProactiveDirector:
         elif self.pipeline.speak(script.text, "normal"):
             ins.commit(script, now, spoken=True)
             self.stats["insight_spoken"] += 1
+
+    def _deliver_checkin(self, now: float) -> None:
+        """One 'how was your day?' a day when nothing else is going on. Never right after a discovery, a safety signal or on
+        a low battery; if it could not start it tries again at the next idle moment inside the window, then the day is skipped."""
+        ci = self.checkin
+        if ci is None or self.asleep or self._composing is not None or self._pending or self.pipeline.state is not State.IDLE:
+            return
+        if self._battery != "ok" or self.checkin_blocked():
+            return
+        ins = getattr(self, "insights", None)
+        if ins is not None and ins.offer and now - ins.offer["t"] < 30 * 60:
+            return
+        text = ci.question(now)
+        if text and self.pipeline.speak(text, "normal"):
+            ci.asked(now)
+            self.stats["checkin_asked"] += 1
 
     def _queue_followups(self, now: float) -> None:
         """Reminders she asked for (content-free). Spoken even in quiet mode, but never while asleep or busy."""

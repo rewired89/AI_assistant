@@ -161,6 +161,22 @@ class PsychologyEngine:
                 return self._offer("naming_emotions", "That sounds like a lot. Would you like to try putting a word on the feeling together? ")
         return None
 
+    # ---- entry points for the daily check-in (she already said yes to these in the check-in's own words) ------------
+    def start_listening(self) -> PsyReply | None:
+        """Begins listening mode, with the usual disclosure the first time. None if the helper is off (the caller says so)."""
+        if not self.available():
+            return None
+        return self._begin("listen", {"turns": 0, "log": [], "pending_ack": False}, ack=True)
+
+    def save_journal(self, text: str, day: str) -> PsyReply | None:
+        """Keeps her own words, and only hers, in the private notebook (second consent if the notebook is still off).
+        None if the helper is off."""
+        if not self.available():
+            return None
+        self.sess = {"kind": "after", "t": self.clock(), "stage": "save", "eid": f"checkin_{day}",
+                     "recap": [("Today", text.strip()[:400])]}
+        return self._save_note()
+
     # ---- session helpers -------------------------------------------------------------------------------
     def _begin(self, kind: str, data: dict, ack: bool = False, then: str | None = None) -> PsyReply:
         self.sess = {"kind": kind, "t": self.clock(), **data}

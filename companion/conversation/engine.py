@@ -76,12 +76,13 @@ class ConversationEngine:
                  clock: Callable[[], float], memory=None, user_name: Callable[[], str | None] = lambda: None,
                  config: EngineConfig | None = None, tz: tzinfo = timezone.utc,
                  on_sensitive: Callable[[dict], None] | None = None, dialogue: LinePicker | None = None,
-                 safety=None, psychology=None, learner=None, memory_talk=None, insights=None):
+                 safety=None, psychology=None, learner=None, memory_talk=None, insights=None, checkin=None):
         self.llm, self.cfg_fn, self.state, self.clock, self.memory = llm, personality_cfg, state, clock, memory
         self.user_name, self.cfg, self.tz, self.on_sensitive = user_name, config or EngineConfig(), tz, on_sensitive
         self.dialogue = dialogue or LinePicker(load_templates(None))
         self.safety, self.psychology = safety, psychology      # SafetyGate / PsychologyEngine (optional)
         self.learner, self.memory_talk = learner, memory_talk  # RoutineLearner / MemoryTalk (optional)
+        self.checkin = checkin                                  # CheckIn (optional): scripted daily check-in, answers never stored
         self.insights = insights                                # DailyInsights (optional): scripted, verified content only
         self.canary = "tok-" + uuid.uuid4().hex
         self.history: deque = deque(maxlen=self.cfg.history_turns * 2)    # RAM only, never persisted
@@ -104,12 +105,22 @@ class ConversationEngine:
                 self._confirm = None
                 if self.memory_talk is not None:
                     self.memory_talk.cancel()
+                if self.checkin is not None:
+                    self.checkin.cancel()
                 return Reply(scripted, "calm", interaction="none")
+        if self.checkin is not None:                           # after safety, before everything else: one coherent check-in flow
+            busy = self.psychology is not None and self.psychology.sess is not None
+            ci = self.checkin.handle(utterance, psychology_busy=busy)
+            if ci is not None:
+                self._confirm = None
+                return Reply(ci.text, ci.style, interaction="none", paced=ci.paced, pauses=ci.pauses)
         if self.psychology is not None:
             pr = self.psychology.handle(utterance, screened=True)
             if pr is not None:                                  # private: not added to history, memory or growth
                 if self.memory_talk is not None:
                     self.memory_talk.cancel()
+                if self.checkin is not None:
+                    self.checkin.cancel()
                 return Reply(pr.text, pr.style, interaction="none", paced=True, pauses=tuple(pr.pauses))
         if self.memory_talk is not None:                        # "what do you remember?" / "forget that": scripted, no model
             asked = self.memory_talk.handle(utterance)

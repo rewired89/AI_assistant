@@ -21,7 +21,7 @@ D = 86400
 
 class World:
     def __init__(self, rig, clock, llm=None, memory=None, proactive="frequent", name="Sam", state_store=None,
-                 curiosity=0.95, playfulness=0.3, psychology=None, safety=None, insights=None, **dcfg):
+                 curiosity=0.95, playfulness=0.3, psychology=None, safety=None, insights=None, checkin=None, checkin_blocked=lambda: False, **dcfg):
         self.clock = clock
         self.r = rig(responder=ScriptedResponder([Reply("Okay.")]))
         self.beh = self.r.pipe.engine
@@ -32,10 +32,11 @@ class World:
         self.conv = ConversationEngine(self.llm, lambda: cfg, self.beh.state, clock, memory=memory,
                                        user_name=lambda: name,
                                        dialogue=LinePicker(load_templates(SP / "ninetales"), random.Random(2)),
-                                       safety=safety, psychology=psychology, insights=insights)
+                                       safety=safety, psychology=psychology, insights=insights, checkin=checkin)
         self.r.pipe.responder = self.conv
         self.d = ProactiveDirector(self.beh, self.conv, self.r.pipe, clock, memory=memory, state_store=state_store,
-                                   config=DirectorConfig(**dcfg), rng=random.Random(3), psychology=psychology, insights=insights)
+                                   config=DirectorConfig(**dcfg), rng=random.Random(3), psychology=psychology, insights=insights,
+                                   checkin=checkin, checkin_blocked=checkin_blocked)
         self.device = self.r.device
 
     def drive(self, seconds, stop=None, coarse=20.0, fine=0.05):
@@ -389,3 +390,44 @@ def test_voice_commands_reach_the_insights_before_the_model(world, tmp_path, clo
     assert "real research" in r.text and ins.enabled and w.llm.calls == []
     r = w.conv.respond("tell me a psychology discovery")
     assert "psychology discovery" in r.text and w.llm.calls == []
+
+
+# ------------------------------------------------------------------ daily check-in
+def _checkin(tmp_path, clock):
+    from datetime import datetime as _dt
+    from companion.checkin import CheckIn
+    ci = CheckIn(tmp_path / "ci.json", clock, timezone.utc)
+    ci.enabled = True
+    h = _dt.fromtimestamp(clock.t, timezone.utc)
+    ci.time_hm = (h.hour, h.minute)
+    return ci
+
+
+def test_the_check_in_question_is_spoken_once_a_day_and_waits_for_her_answer(world, tmp_path, clock):
+    ci = _checkin(tmp_path, clock)
+    w = world(proactive="never", checkin=ci)
+    assert w.drive(600, stop=lambda: w.d.stats["checkin_asked"] >= 1)
+    w.settle()
+    assert "day" in spoken(w.r).lower() and ci.waiting
+    w.drive(6 * 3600)
+    assert w.d.stats["checkin_asked"] == 1 and w.llm.calls == []                    # no second question, no model
+
+
+def test_the_check_in_holds_back_after_a_safety_signal_on_low_battery_and_after_a_discovery(world, tmp_path, clock):
+    ci = _checkin(tmp_path, clock)
+    blocked = {"on": True}
+    w = world(proactive="never", checkin=ci, checkin_blocked=lambda: blocked["on"])
+    w.drive(120)
+    assert w.d.stats["checkin_asked"] == 0
+    blocked["on"] = False
+    w.d._battery = "low"
+    w.drive(120)
+    assert w.d.stats["checkin_asked"] == 0
+    w.d._battery = "ok"
+    from companion.discoveries import DailyInsights, load_dir
+    ins = DailyInsights(tmp_path / "i2.json", load_dir("content/discoveries")[0], clock)
+    ins.offer = {"id": "x", "t": clock.t}                                            # a discovery was just shared
+    w.d.insights = ins
+    w.drive(120)
+    assert w.d.stats["checkin_asked"] == 0
+    assert w.drive(40 * 60, stop=lambda: w.d.stats["checkin_asked"] >= 1)            # half an hour later it may ask
