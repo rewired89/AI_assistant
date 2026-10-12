@@ -233,7 +233,7 @@ body{display:flex;flex-direction:column;align-items:center;gap:12px}
 <div class="status"><span class="pill" id="s_state">connecting</span><span class="pill" id="s_anim"></span><span class="pill" id="s_pow"></span><span class="pill" id="s_bat"></span><span class="pill" id="s_mic"></span><span class="pill" id="s_stage"></span></div>
 <div class="cap" id="cap" aria-live="polite"></div>
 <div class="meter" title="microphone level (green) and the speech threshold (red line)"><div id="lvl"></div><div id="thr"></div></div>
-<div class="heard" id="heard" aria-live="polite"></div>
+<div class="heard" id="heard" aria-live="polite"></div><div class="heard" id="micstat" style="color:#b3261e" role="alert"></div>
 <div class="row"><button id="talk">Talk (space)</button><button class="alt" id="mute">Mute mic (m)</button><button class="alt" id="wake">Wake</button>
 <label class="pill">battery <input id="bat" type="range" min="0" max="100" value="100"> <span id="batv">100</span>%</label></div>
 <div class="note">Test rig only: this is the simulated robot, not the hardware. "You said" shows what she heard, for testing; the real robot shows nothing of the kind.</div>
@@ -282,7 +282,7 @@ async function poll(){try{const r=await fetch('/api/state');st=await r.json();
  if(st.rev!==rev){rev=st.rev;await loadDoc()}
  $('s_state').textContent='she is: '+st.pipe;$('s_anim').textContent=st.anim;$('s_pow').textContent=st.power;$('s_bat').textContent='battery '+st.battery+'%';
  $('s_mic').textContent=st.mic?'mic ON':'mic MUTED';$('s_stage').textContent='stage '+st.stage;$('cap').textContent=st.caption||'';
- $('lvl').style.width=Math.min(100,(st.level||0)/80)+'%';$('thr').style.left=Math.min(100,(st.threshold||0)/80)+'%';
+ $('micstat').textContent=(st.mic_status&&st.mic_status!=='ok')?'MICROPHONE PROBLEM: '+st.mic_status:'';$('lvl').style.width=Math.min(100,(st.level||0)/80)+'%';$('thr').style.left=Math.min(100,(st.threshold||0)/80)+'%';
  if(st.heard!==undefined)$('heard').textContent=st.heard?'You said: '+st.heard:(st.heard_empty?'(she heard nothing)':'');
  if(st.stage!==lastStage){lastStage=st.stage;drawTails(TAILS[st.stage]??1);$('facepos').setAttribute('transform',st.stage==='EGG'?'translate(100 130) scale(.5)':'')}
 }catch(e){$('s_state').textContent='disconnected (restart the desk robot)'}setTimeout(poll,100)}

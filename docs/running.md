@@ -21,6 +21,9 @@ She speaks first (the onboarding questions). Open the printed address (http://lo
 ## The screen art
 `python -m tools.desk_view` opens just the pixel sprite editor (`http://localhost:8765/editor`); the desk robot serves the same editor next to her live face. See `sprites.md`. The live view shows "You said: ..." (what she heard) and a mic level bar with the speech threshold, so a robot that "does nothing" after you answer can be diagnosed: if the bar never moves the microphone is not reaching her, if it moves but nothing is heard the speech model is the problem.
 
+## Microphone problems
+`python -m tools.mic_check` records 5 seconds and says what is wrong (no audio, silent/muted, too quiet, too loud) using the same recording path as the desk robot. `arecord -l` lists input devices; pass one with `python -m tools.desk_robot run --dir dev --mic-device plughw:1,0`. The desk robot prints `[mic] ...` and the live view shows a red "MICROPHONE PROBLEM" line if the recorder dies or sends nothing for 3 s (before this, a failed `arecord` was silent, which looks exactly like a mic that "stopped working").
+
 ## What is wired
 Secret store + TLS wss server (device dials in) -> device client -> onboarding (answers change the live personality) -> safety gate -> psychology engine (private vault) -> conversation engine -> voice pipeline (STT/TTS) -> proactive director. Memory and vault open encrypted when `memory.encrypt: true`.
 

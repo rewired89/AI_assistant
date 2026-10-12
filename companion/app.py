@@ -29,6 +29,7 @@ from .conversation import ConversationEngine, LLMUnavailable, OllamaLanguageMode
 from .conversation.dialogue import LinePicker, load_templates
 from .interfaces import LanguageModel, SpeechRecognizer, SpeechSynthesizer
 from .behavior import BehaviorEngine
+from .learning import MemoryTalk, RoutineLearner
 from .memory import MemoryStore, ReflectionVault
 from .personality import config as pc
 from .psychology.engine import PsychologyEngine
@@ -197,9 +198,12 @@ class Companion:
         self.psychology = PsychologyEngine(
             self.settings, self.vault, clock, gate=self.gate, tz=self.tz, llm=self.llm,
             feature=lambda: eff()["behavior"]["psychological_growth_features"])
+        self.learner = RoutineLearner(data / "routines.json", clock, self.tz, self.memory)
+        self.memory_talk = MemoryTalk(self.memory, self.learner, clock=clock)
         self.conversation = ConversationEngine(
             self.llm, eff, self.state, clock, memory=self.memory, user_name=self.onboarding.user_name, tz=self.tz,
-            dialogue=LinePicker(load_templates(sp), random.Random()), safety=self.gate, psychology=self.psychology)
+            dialogue=LinePicker(load_templates(sp), random.Random()), safety=self.gate, psychology=self.psychology,
+            learner=self.learner, memory_talk=self.memory_talk)
         self.personality = pc.Personality(eff())
         self.behavior = BehaviorEngine(self.personality, self.state, clock, random.Random())
         self.pipeline = VoicePipeline(self.client, stt or self._make_stt(), tts or self._make_tts(), self.conversation, clock,

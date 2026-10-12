@@ -76,11 +76,12 @@ class ConversationEngine:
                  clock: Callable[[], float], memory=None, user_name: Callable[[], str | None] = lambda: None,
                  config: EngineConfig | None = None, tz: tzinfo = timezone.utc,
                  on_sensitive: Callable[[dict], None] | None = None, dialogue: LinePicker | None = None,
-                 safety=None, psychology=None):
+                 safety=None, psychology=None, learner=None, memory_talk=None):
         self.llm, self.cfg_fn, self.state, self.clock, self.memory = llm, personality_cfg, state, clock, memory
         self.user_name, self.cfg, self.tz, self.on_sensitive = user_name, config or EngineConfig(), tz, on_sensitive
         self.dialogue = dialogue or LinePicker(load_templates(None))
         self.safety, self.psychology = safety, psychology      # SafetyGate / PsychologyEngine (optional)
+        self.learner, self.memory_talk = learner, memory_talk  # RoutineLearner / MemoryTalk (optional)
         self.canary = "tok-" + uuid.uuid4().hex
         self.history: deque = deque(maxlen=self.cfg.history_turns * 2)    # RAM only, never persisted
         self._confirm: dict | None = None
@@ -100,11 +101,20 @@ class ConversationEngine:
             scripted = self.safety.check(utterance)
             if scripted:
                 self._confirm = None
+                if self.memory_talk is not None:
+                    self.memory_talk.cancel()
                 return Reply(scripted, "calm", interaction="none")
         if self.psychology is not None:
             pr = self.psychology.handle(utterance, screened=True)
             if pr is not None:                                  # private: not added to history, memory or growth
+                if self.memory_talk is not None:
+                    self.memory_talk.cancel()
                 return Reply(pr.text, pr.style, interaction="none", paced=True, pauses=tuple(pr.pauses))
+        if self.memory_talk is not None:                        # "what do you remember?" / "forget that": scripted, no model
+            asked = self.memory_talk.handle(utterance)
+            if asked is not None:
+                self._confirm = None
+                return asked
         answered = self._answer_confirmation(utterance)
         if answered:
             return answered
@@ -128,9 +138,24 @@ class ConversationEngine:
         for cand in extract_candidates(utterance):          # deterministic backstop for plain statements
             self._store_candidate(cand, utterance)
         reply.interaction = self._classify(utterance, actions)
+        self._learn(utterance, reply)
         self.history.append({"role": "user", "content": utterance[:300]})
         self.history.append({"role": "assistant", "content": reply.text[:300]})
         return reply
+
+    def _learn(self, utterance: str, reply: Reply) -> None:
+        """Routine recognition: note this chat (time of day only), and at most occasionally ask whether to keep a routine
+        that enough days of evidence support. Nothing is kept without her yes."""
+        if self.learner is None:
+            return
+        try:
+            self.learner.record_chat(utterance, self.clock())
+            q = self.learner.next_question(self.clock())
+        except Exception:
+            return
+        if q and self._confirm is None and reply.interaction != "none" and not reply.after_speech:
+            reply.text = f"{reply.text} {q['question']}"
+            self._confirm, self._last_ask_turn = {"id": q["id"], "turn": self._turn, "routine_key": q["key"]}, self._turn
 
     @staticmethod
     def _classify(utterance: str, actions: list) -> str:
@@ -200,9 +225,12 @@ class ConversationEngine:
             return None
         rec = {k: cand[k] for k in ("category", "key", "value", "source", "confidence", "source_context") if k in cand}
         try:
-            return self.memory.add(rec)
+            mid = self.memory.add(rec)
         except (Disabled, MemoryError_):
             return None
+        if self.memory_talk is not None:
+            self.memory_talk.note_saved(mid)
+        return mid
 
     def _answer_confirmation(self, utterance: str) -> Reply | None:
         pend, self._confirm = self._confirm, None
@@ -216,6 +244,8 @@ class ConversationEngine:
                 return Reply("Got it, I'll remember that.", "happy")
             if no and not yes:
                 self.memory.delete(pend["id"])
+                if pend.get("routine_key") and self.learner is not None:
+                    self.learner.decline(pend["routine_key"])      # do not ask again for a while
                 return Reply("Okay, I won't remember that.", "calm")
         except MemoryError_:
             pass

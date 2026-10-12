@@ -37,15 +37,59 @@ MIC_CHUNK = 3200                       # 100 ms of 16 kHz mono PCM16
 
 
 class ArecordMic:
-    def __init__(self):
-        self.p = subprocess.Popen(["arecord", "-q", "-t", "raw", "-f", "S16_LE", "-r", "16000", "-c", "1"],
-                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    """Reads the microphone through `arecord`. Unlike a plain pipe it NEVER fails silently: the program's error text is
+    kept, a dead or silent microphone is reported by `status()`, and one restart is attempted if it dies."""
+
+    def __init__(self, device: str | None = None, argv: list[str] | None = None, silence_after_s: float = 3.0):
+        self.device = device
+        self.argv = argv or (["arecord", "-q", "-t", "raw", "-f", "S16_LE", "-r", "16000", "-c", "1"]
+                             + (["-D", device] if device else []))
+        self.silence_after_s = silence_after_s
+        self.err: list[str] = []
+        self.restarts = 0
+        self.last_data = time.time()
+        self.started = time.time()
+        self.p = None
+        self._start()
+
+    def _start(self) -> None:
+        try:
+            self.p = subprocess.Popen(self.argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except OSError as e:
+            self.p = None
+            self.err.append(f"cannot start {self.argv[0]}: {e.strerror or type(e).__name__} (sudo apt install alsa-utils)")
+            return
+        threading.Thread(target=self._drain_stderr, args=(self.p,), daemon=True, name="mic-stderr").start()
+
+    def _drain_stderr(self, p) -> None:
+        for line in iter(p.stderr.readline, b""):
+            self.err = (self.err + [line.decode(errors="replace").strip()])[-5:]
 
     def read(self) -> bytes:
-        return self.p.stdout.read(MIC_CHUNK) or b""
+        if self.p is None:
+            return b""
+        data = self.p.stdout.read(MIC_CHUNK)
+        if data:
+            self.last_data = time.time()
+            return data
+        if self.p.poll() is not None and self.restarts < 1:        # it died: try once more, keep what it said
+            self.restarts += 1
+            self._start()
+        return b""
+
+    def status(self) -> str:
+        """'ok', or the reason there is no microphone audio (shown on screen and in the terminal)."""
+        if self.p is None:
+            return self.err[-1] if self.err else "microphone program not started"
+        if self.p.poll() is not None:
+            return "microphone program stopped" + (f": {self.err[-1]}" if self.err else "")
+        if time.time() - max(self.last_data, self.started) > self.silence_after_s:
+            return "no audio from the microphone" + (f": {self.err[-1]}" if self.err else " (wrong input device? try --mic-device)")
+        return "ok"
 
     def close(self) -> None:
-        self.p.terminate()
+        if self.p is not None:
+            self.p.terminate()
 
 
 class AplaySpeaker:
@@ -91,14 +135,14 @@ def init(dir_: Path, llm_url: str, llm_model: str, stt_model: str | None, port: 
 
 
 def run(dir_: Path, mic=None, speaker=None, keys: "queue.Queue[str] | None" = None, stop: threading.Event | None = None,
-        out=print, view_port: int | None = 8765, **companion_kwargs) -> int:
+        out=print, view_port: int | None = 8765, mic_device: str | None = None, **companion_kwargs) -> int:
     dir_ = Path(dir_)
     cfg = AppConfig.load(dir_ / "companion.yaml")
     clock = SystemClock()
     app = Companion(cfg, clock=clock, **companion_kwargs)
     stop = stop or threading.Event()
     own_mic, own_spk = mic is None, speaker is None
-    mic = mic or ArecordMic()
+    mic = mic or ArecordMic(mic_device)
     speaker = speaker or AplaySpeaker()
     dev = SimulatedDevice(None, Storage(dir_ / "flash.json"), clock)
     dev.on_speaker = speaker.write
@@ -119,7 +163,7 @@ def run(dir_: Path, mic=None, speaker=None, keys: "queue.Queue[str] | None" = No
             if dev.capture is not None:                      # the mic only matters while the device has it open
                 link.call(lambda c=chunk: dev.feed_mic(c))
 
-    meter = {"level": 0.0}
+    meter = {"level": 0.0, "status": "ok"}
     heard = {"text": "", "empty": False}
 
     def on_heard(text: str) -> None:
@@ -144,7 +188,7 @@ def run(dir_: Path, mic=None, speaker=None, keys: "queue.Queue[str] | None" = No
                 "pipe": pipe.state.value, "stage": app.state.stage, "caption": caption,
                 "speaking": pipe.state.value == "speaking", "notes": [n for _, n in list(pipe.log)[-5:]],
                 "level": meter["level"], "threshold": det.current_threshold if det else 0,
-                "heard": heard["text"], "heard_empty": heard["empty"]}
+                "heard": heard["text"], "heard_empty": heard["empty"], "mic_status": meter["status"]}
 
     def command(cmd: str, arg) -> None:
         if cmd == "press":
@@ -168,6 +212,10 @@ def run(dir_: Path, mic=None, speaker=None, keys: "queue.Queue[str] | None" = No
     try:
         while not stop.is_set():
             seen = _print_new_notes(app.pipeline, seen, out)
+            status = mic.status() if hasattr(mic, "status") else "ok"
+            if status != meter["status"]:
+                meter["status"] = status
+                out(f"  [mic] {status}" if status != "ok" else "  [mic] audio is arriving again")
             try:
                 k = keys.get(timeout=0.1)
             except queue.Empty:
@@ -222,6 +270,7 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--voice", default="af_heart")
     r = sub.add_parser("run")
     r.add_argument("--dir", default="dev")
+    r.add_argument("--mic-device", help="arecord device name, from: arecord -l   e.g. plughw:1,0")
     r.add_argument("--view-port", type=int, default=8765, help="0 = pick a free port, -1 = no face window")
     a = ap.parse_args(argv)
     try:
@@ -231,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         q: "queue.Queue[str]" = queue.Queue()
         threading.Thread(target=_stdin_keys, args=(q,), daemon=True).start()
-        return run(Path(a.dir), keys=q, view_port=None if a.view_port < 0 else a.view_port)
+        return run(Path(a.dir), keys=q, view_port=None if a.view_port < 0 else a.view_port, mic_device=a.mic_device)
     except (ConfigProblem, FileExistsError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

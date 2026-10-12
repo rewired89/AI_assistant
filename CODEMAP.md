@@ -49,6 +49,8 @@
 | `companion/sprites_import.py` (incl. `split_sheet`, real idle frames -> expressions), `tools/import_sprites.py`, `tests/companion/test_sprites_import.py`, `assets/sprites/source/` | PNG stills -> sprite set with generated motion and overlays; the owner's source art |
 | `companion/sprites.py`, `companion/sprites_default.py`, `assets/sprites/default.json`, `tests/companion/test_sprites.py`, `docs/sprites.md` | Sprite set format (strict validation, atomic save), starter art generator, the committed default set |
 | `tools/bench_tts.py` | Time a TTS voice and save a WAV to listen to |
+| `companion/learning/routines.py`, `companion/learning/memory_talk.py`, `tests/companion/test_learning.py`, `docs/learning.md` | Routine recognition (evidence rules, pending until she says yes) and spoken "what do you remember / forget that" |
+| `tools/mic_check.py`, `tests/integration/test_mic_tools.py` | 5-second microphone check with level bar and a plain verdict; ArecordMic reports failures instead of hiding them |
 | `tools/fetch_models.py` | One-time Whisper model download |
 | `tests/companion/test_speech_engines.py` | Engine adapters: stubbed process/model, real espeak through the pipeline |
 | `companion/memory/crypto.py` | `FieldCipher`: AES-GCM field encryption + HMAC key index (scrypt/HKDF) |
