@@ -34,6 +34,9 @@ from .memory import MemoryStore, ReflectionVault
 from .personality import config as pc
 from .personality.adaptation import PersonalityAdapter
 from .checkin import CheckIn
+from .productivity import ProductivityStore
+from .productivity.talk import NotesTalk
+from .webapp import AuthStore, VaultJournal, WebApp
 from .discoveries import DailyInsights, load_dir as load_discoveries
 from .psychology.engine import PsychologyEngine
 from .psychology.safety import SafetyGate
@@ -43,7 +46,7 @@ from .speech import VoicePipeline, load_lines
 from .tamagotchi import StateStore, load_rules
 
 ROOT = Path(__file__).resolve().parent.parent
-KNOWN = {"species", "user_id", "timezone", "data_dir", "device_id", "secrets", "listen", "tls", "stt", "tts", "llm", "memory", "adaptation"}
+KNOWN = {"species", "user_id", "timezone", "data_dir", "device_id", "secrets", "listen", "tls", "stt", "tts", "llm", "memory", "adaptation", "webapp"}
 
 
 class ConfigProblem(Exception):
@@ -67,6 +70,7 @@ class AppConfig:
     llm: dict = field(default_factory=dict)
     memory: dict = field(default_factory=dict)
     adaptation: dict = field(default_factory=dict)
+    webapp: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path | str) -> "AppConfig":
@@ -97,13 +101,17 @@ class AppConfig:
                   tls_cert=path_of(tls["cert"]), tls_key=path_of(tls["key"]), data_dir=path_of(need("data_dir")),
                   user_id=str(raw.get("user_id", "her")), timezone=str(raw.get("timezone", "UTC")),
                   host=str(listen.get("host", "127.0.0.1")), port=int(listen.get("port", 8443)),
-                  stt=raw.get("stt") or {}, tts=raw.get("tts") or {}, llm=raw.get("llm") or {}, memory=raw.get("memory") or {}, adaptation=raw.get("adaptation") or {})
+                  stt=raw.get("stt") or {}, tts=raw.get("tts") or {}, llm=raw.get("llm") or {}, memory=raw.get("memory") or {}, adaptation=raw.get("adaptation") or {}, webapp=raw.get("webapp") or {})
         cfg.validate()
         return cfg
 
     def validate(self) -> None:
         if not (ROOT / "species" / self.species / "personality.yaml").exists():
             raise ConfigProblem(f"unknown species {self.species!r}")
+        wa = self.webapp
+        if not isinstance(wa, dict) or set(wa) - {"enabled", "host", "port", "hosts"} or not isinstance(wa.get("enabled", False), bool) \
+                or not isinstance(wa.get("port", 8790), int) or not isinstance(wa.get("hosts", []), list):
+            raise ConfigProblem("webapp accepts only: enabled (true/false), host, port, hosts (list of names or addresses the phone uses)")
         try:
             ZoneInfo(self.timezone)
         except Exception:
@@ -210,6 +218,21 @@ class Companion:
         self.adapter = PersonalityAdapter(data / "personality_drift.json", self.personality, clock, self.tz,
                                           enabled=ad.get("enabled", True))
         self.memory_talk = MemoryTalk(self.memory, self.learner, clock=clock, adapter=self.adapter)
+        wa = cfg.webapp
+        self.productivity = ProductivityStore(data / "productivity.db", clock, pw)
+        self._closers.append(self.productivity.close)
+        self.notes_talk = NotesTalk(self.productivity, clock, self.tz, phone_hint=bool(wa.get("enabled")))
+        self.webapp = None
+        if wa.get("enabled"):
+            wh = str(wa.get("host", "127.0.0.1"))
+            self.auth = AuthStore(data / "webapp_auth.json", clock)
+            try:
+                self.webapp = WebApp(self.productivity, VaultJournal(self.vault), self.auth, clock, host=wh, port=int(wa.get("port", 8790)),
+                                     tls=None if wh in ("127.0.0.1", "localhost") else (str(cfg.tls_cert), str(cfg.tls_key)),
+                                     allowed_hosts=[str(x) for x in wa.get("hosts", [])], name=lambda: self.onboarding.user_name())
+            except Exception as e:
+                raise ConfigProblem(f"phone app: {e}") from None
+            self._closers.append(self.webapp.stop)
         self.checkin = CheckIn(data / "checkin.json", clock, self.tz, quiet=lambda: self.behavior.settings.quiet_mode,
                                psychology=self.psychology)
         entries, self.library_problems = load_discoveries(ROOT / "content" / "discoveries")
@@ -218,7 +241,7 @@ class Companion:
         self.conversation = ConversationEngine(
             self.llm, eff, self.state, clock, memory=self.memory, user_name=self.onboarding.user_name, tz=self.tz,
             dialogue=LinePicker(load_templates(sp), random.Random()), safety=self.gate, psychology=self.psychology,
-            learner=self.learner, memory_talk=self.memory_talk, insights=self.insights, checkin=self.checkin)
+            learner=self.learner, memory_talk=self.memory_talk, insights=self.insights, checkin=self.checkin, notes_talk=self.notes_talk)
         self.behavior = BehaviorEngine(self.personality, self.state, clock, random.Random())
         self.pipeline = VoicePipeline(self.client, stt or self._make_stt(), tts or self._make_tts(), self.conversation, clock,
                                       engine=self.behavior, onboarding=self.onboarding, lines=load_lines(sp))
@@ -253,6 +276,8 @@ class Companion:
     def start(self) -> None:
         if hasattr(self.transport, "start") and not self._started:
             self.transport.start()
+        if self.webapp is not None and not self._started:
+            self.webapp.start()
         self._started = True
 
     def step(self) -> None:

@@ -93,3 +93,4 @@
 - `docs/test-coverage.md`: spec 39 required-test map; `tests/companion/test_provider_swap.py`.
 - `companion/workbench.py` (catalog/check/Simulator/rebuild/WorkbenchApi), `tools/workbench.py` + `tools/workbench_page.py` (launcher + page, routes in `tools/desk_view.py`), `assets/sprites/manifest.json`, `tools/export_sprites.py` (.ntsp), `docs/workbench.md`.
 - `companion/checkin.py` (`CheckIn`), hooks: `ConversationEngine(checkin=)` (after safety, before psychology), `ProactiveDirector._deliver_checkin`, `PsychologyEngine.start_listening/save_journal`; `docs/checkin.md`.
+- `companion/productivity/store.py` (notes, lists, optional encryption), `companion/productivity/talk.py` (`NotesTalk`, wired in `ConversationEngine(notes_talk=)`), `companion/webapp/server.py` (`WebApp`, `AuthStore`, `VaultJournal`), `companion/webapp/static/*` (PWA), `tools/app.py` (demo, pair), config key `webapp`, `docs/phone-app.md`.

@@ -35,6 +35,12 @@ python -m tools.workbench
 ```
 Open `http://localhost:8765/workbench`. Guide: `docs/workbench.md`. Check the art files: `python -m tools.workbench check`.
 
+## See the phone app (sample data)
+```
+python -m tools.app demo
+```
+Open `http://localhost:8790` and make the window narrow. Guide: `docs/phone-app.md`.
+
 ## 2. Board arrives (do these in order, send me every output)
 1. Photograph both sides. Do NOT flash anything yet.
 2. Install the tool: `pip install esptool`

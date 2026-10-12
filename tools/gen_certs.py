@@ -43,6 +43,7 @@ def generate(out: Path, hosts: list[str], now: dt.datetime | None = None) -> dic
           .public_key(ca_key.public_key()).serial_number(x509.random_serial_number())
           .not_valid_before(now - dt.timedelta(minutes=5)).not_valid_after(now + dt.timedelta(days=3650))
           .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+          .add_extension(x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()), critical=False)
           .add_extension(x509.KeyUsage(False, False, False, False, False, True, True, False, False), critical=True)
           .sign(ca_key, hashes.SHA256()))
     sans = []
@@ -56,6 +57,8 @@ def generate(out: Path, hosts: list[str], now: dt.datetime | None = None) -> dic
            .not_valid_before(now - dt.timedelta(minutes=5)).not_valid_after(now + dt.timedelta(days=825))
            .add_extension(x509.SubjectAlternativeName(sans), critical=False)
            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+           .add_extension(x509.SubjectKeyIdentifier.from_public_key(srv_key.public_key()), critical=False)
+           .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False)
            .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
            .sign(ca_key, hashes.SHA256()))
     paths = {"ca_cert": out / "ca.pem", "ca_key": out / "ca.key", "server_cert": out / "server.pem",

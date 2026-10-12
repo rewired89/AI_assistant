@@ -114,7 +114,7 @@ class AplaySpeaker:
 
 
 def init(dir_: Path, llm_url: str, llm_model: str, stt_model: str | None, port: int = 8443, species: str = "ninetales",
-         tts_model: str | None = None, voice: str = "af_heart") -> Path:
+         tts_model: str | None = None, voice: str = "af_heart", phone_app: bool = False) -> Path:
     dir_.mkdir(parents=True, exist_ok=True)
     cfg_path = dir_ / "companion.yaml"
     if cfg_path.exists():
@@ -131,6 +131,8 @@ def init(dir_: Path, llm_url: str, llm_model: str, stt_model: str | None, port: 
            "tts": ({"engine": "kokoro", "model": str(Path(tts_model).resolve()), "voice": voice} if tts_model
                    else {"engine": "espeak"}), "llm": {"engine": "ollama", "url": llm_url, "model": llm_model},
            "memory": {"encrypt": False}}
+    if phone_app:
+        cfg["webapp"] = {"enabled": True, "host": "127.0.0.1", "port": 8790}
     cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
     return cfg_path
 
@@ -270,6 +272,7 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--species", default="ninetales")
     i.add_argument("--tts-model", help="folder from tools.fetch_models kokoro (natural voice); omit for robotic espeak")
     i.add_argument("--voice", default="af_heart")
+    i.add_argument("--phone-app", action="store_true", help="also serve her notes/lists/journal app at http://localhost:8790 (this computer only)")
     r = sub.add_parser("run")
     r.add_argument("--dir", default="dev")
     r.add_argument("--mic-device", help="arecord device name, from: arecord -l   e.g. plughw:1,0")
@@ -278,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     try:
         if a.cmd == "init":
-            p = init(Path(a.dir), a.llm_url, a.llm_model, a.stt_model, species=a.species, tts_model=a.tts_model, voice=a.voice)
+            p = init(Path(a.dir), a.llm_url, a.llm_model, a.stt_model, species=a.species, tts_model=a.tts_model, voice=a.voice, phone_app=a.phone_app)
             print(f"created {p}. Next: python -m tools.desk_robot run --dir {a.dir}")
             return 0
         q: "queue.Queue[str]" = queue.Queue()

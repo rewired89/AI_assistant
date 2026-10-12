@@ -174,3 +174,25 @@ def test_failed_startup_leaves_nothing_open(home):
     p.write_text(yaml.safe_dump(cfg))
     with pytest.raises(Exception):
         Companion(AppConfig.load(p), clock=CLOCK)
+
+
+def test_phone_app_config_is_validated_and_the_voice_to_phone_path_works(home):
+    import yaml
+    cfgp = home["tmp"] / "companion.yaml"
+    raw = yaml.safe_load(cfgp.read_text())
+    for bad in ({"enabled": "yes"}, {"colour": 1}, {"port": "x"}):
+        (home["tmp"] / "bad.yaml").write_text(yaml.safe_dump({**raw, "webapp": bad}))
+        with pytest.raises(ConfigProblem):
+            AppConfig.load(home["tmp"] / "bad.yaml")
+    raw["webapp"] = {"enabled": True, "host": "127.0.0.1", "port": 0}
+    cfgp.write_text(yaml.safe_dump(raw))
+    app = Companion(AppConfig.load(cfgp), clock=CLOCK, transport=_NullTransport(),
+                    authenticator=SecretStore(home["tmp"] / "keys.json", CLOCK).authenticator(DID, CLOCK))
+    try:
+        app.start()
+        assert app.webapp.url.startswith("http://localhost:") and app.notes_talk.phone_hint
+        r = app.conversation.respond("write this down: I want a magnetic robot enclosure")
+        assert "review it on your phone" in r.text
+        assert app.productivity.notes()[0]["body"] == "I want a magnetic robot enclosure"
+    finally:
+        app.close()

@@ -76,12 +76,13 @@ class ConversationEngine:
                  clock: Callable[[], float], memory=None, user_name: Callable[[], str | None] = lambda: None,
                  config: EngineConfig | None = None, tz: tzinfo = timezone.utc,
                  on_sensitive: Callable[[dict], None] | None = None, dialogue: LinePicker | None = None,
-                 safety=None, psychology=None, learner=None, memory_talk=None, insights=None, checkin=None):
+                 safety=None, psychology=None, learner=None, memory_talk=None, insights=None, checkin=None, notes_talk=None):
         self.llm, self.cfg_fn, self.state, self.clock, self.memory = llm, personality_cfg, state, clock, memory
         self.user_name, self.cfg, self.tz, self.on_sensitive = user_name, config or EngineConfig(), tz, on_sensitive
         self.dialogue = dialogue or LinePicker(load_templates(None))
         self.safety, self.psychology = safety, psychology      # SafetyGate / PsychologyEngine (optional)
         self.learner, self.memory_talk = learner, memory_talk  # RoutineLearner / MemoryTalk (optional)
+        self.notes_talk = notes_talk                            # NotesTalk (optional): voice notes and lists, scripted
         self.checkin = checkin                                  # CheckIn (optional): scripted daily check-in, answers never stored
         self.insights = insights                                # DailyInsights (optional): scripted, verified content only
         self.canary = "tok-" + uuid.uuid4().hex
@@ -107,7 +108,14 @@ class ConversationEngine:
                     self.memory_talk.cancel()
                 if self.checkin is not None:
                     self.checkin.cancel()
+                if self.notes_talk is not None:
+                    self.notes_talk.cancel()
                 return Reply(scripted, "calm", interaction="none")
+        if self.notes_talk is not None and (self.notes_talk.dictating or self.psychology is None or self.psychology.sess is None):
+            nt = self.notes_talk.handle(utterance)          # notes and lists: scripted, nothing here reaches the model or memory
+            if nt is not None:
+                self._confirm = None
+                return Reply(nt.text, nt.style, interaction="none")
         if self.checkin is not None:                           # after safety, before everything else: one coherent check-in flow
             busy = self.psychology is not None and self.psychology.sess is not None
             ci = self.checkin.handle(utterance, psychology_busy=busy)
