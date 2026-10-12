@@ -3,10 +3,10 @@ firmware can load. One JSON file per set; one 'animation' per protocol animation
 
     {"version": 1, "name": "default", "width": 64, "height": 64,
      "screen": {"width": 240, "height": 240, "shape": "square"},          # preview only; UNVERIFIED until the board is known
-     "palette": ["#00000000", "#f2b46d", ...],                           # up to 16 colours, index 0 is usually transparent
+     "palette": ["#00000000", "#f2b46d", ...],                           # up to 64 colours, index 0 is usually transparent
      "animations": {"idle": {"loop": true, "frames": [{"ms": 2200, "rows": ["0000...", ...]}, ...]}, ...}}
 
-Each row is a string with one hex digit per pixel (a palette index), so files stay small and diff cleanly in git.
+Each row is a string with one character per pixel (a palette index, see ALPHABET), so files stay small and diff cleanly in git.
 Validation is strict because a file can come from a browser: sizes, colours, names and counts are all bounded.
 Original artwork only (project rule); nothing here is taken from any franchise."""
 from __future__ import annotations
@@ -20,13 +20,14 @@ from protocol.schema_consts import ANIMATIONS
 
 VERSION = 1
 MIN_SIZE, MAX_SIZE = 8, 128
-MAX_COLORS = 16
+MAX_COLORS = 64
 MAX_FRAMES = 12
 MIN_MS, MAX_MS = 40, 10_000
 MAX_BYTES = 2_000_000
 _NAME = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 _COLOR = re.compile(r"^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")
-_HEX = "0123456789abcdef"
+# One character per pixel. The first 16 are hex digits, so files with up to 16 colours look exactly as before.
+ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+-"
 
 
 class SpriteError(ValueError):
@@ -62,7 +63,7 @@ def validate(doc: object) -> dict:
     pal = doc.get("palette")
     if not isinstance(pal, list) or not 1 <= len(pal) <= MAX_COLORS or not all(isinstance(c, str) and _COLOR.match(c) for c in pal):
         raise SpriteError(f"palette must be 1..{MAX_COLORS} colours like #rrggbb or #rrggbbaa")
-    digits = _HEX[:len(pal)]
+    digits = ALPHABET[:len(pal)]
     anims = doc.get("animations")
     if not isinstance(anims, dict) or not anims:
         raise SpriteError("animations must be a non-empty object")
@@ -113,4 +114,4 @@ def save(path: Path | str, doc: dict) -> None:
 
 
 def pixel(doc: dict, animation: str, frame: int, x: int, y: int) -> int:
-    return _HEX.index(doc["animations"][animation]["frames"][frame]["rows"][y][x])
+    return ALPHABET.index(doc["animations"][animation]["frames"][frame]["rows"][y][x])

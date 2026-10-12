@@ -46,6 +46,7 @@
 | `tools/check_llm.py`, `tests/companion/test_check_llm.py` | Check a remote Ollama server: reachable, model present, answer time |
 | `tools/desk_robot.py`, `tests/integration/test_desk_robot.py` | Simulated robot wired to laptop mic/speaker; init + run the whole companion by voice |
 | `tools/desk_view.py`, `tests/integration/test_desk_view.py` | Desk robot window: live face + mic meter + "You said", and the pixel sprite editor; local HTTP only, Host/Origin/header checked |
+| `companion/sprites_import.py`, `tools/import_sprites.py`, `tests/companion/test_sprites_import.py`, `assets/sprites/source/` | PNG stills -> sprite set with generated motion and overlays; the owner's source art |
 | `companion/sprites.py`, `companion/sprites_default.py`, `assets/sprites/default.json`, `tests/companion/test_sprites.py`, `docs/sprites.md` | Sprite set format (strict validation, atomic save), starter art generator, the committed default set |
 | `tools/bench_tts.py` | Time a TTS voice and save a WAV to listen to |
 | `tools/fetch_models.py` | One-time Whisper model download |

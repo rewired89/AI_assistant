@@ -259,7 +259,7 @@ const TAILS={EGG:0,BABY:1,YOUNG:3,NINE_TAILS:9,PERSONALIZED_NINE_TAILS:9};
 function drawTails(n){let s='';if(n===0){s='<ellipse cx="200" cy="245" rx="120" ry="150" fill="var(--cream)" stroke="var(--line)" stroke-width="4"/><circle cx="110" cy="260" r="9" fill="var(--fur)"/><circle cx="285" cy="215" r="11" fill="var(--fur)"/><circle cx="150" cy="335" r="8" fill="var(--fur)"/><circle cx="270" cy="320" r="7" fill="var(--fur)"/>'}
  else{for(let i=0;i<n;i++){const t=n===1?0:(i/(n-1)-.5)*2;const ang=n===1?58:t*62;s+=`<g transform="translate(200 300) rotate(${ang}) scale(.8) translate(-200 -330)"><path d="M200 330 C150 250 160 120 200 60 C240 120 250 250 200 330Z" fill="var(--tail)" opacity=".95"/><path d="M200 120 C182 90 190 70 200 60 C210 70 218 90 200 120Z" fill="var(--tip)"/></g>`}}
  $('tails').innerHTML=s}
-let talk=0,lastStage='',st={},doc=null,useSprites=true,rev=-1,t0=performance.now();
+const ALPHA='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+-';let talk=0,lastStage='',st={},doc=null,useSprites=true,rev=-1,t0=performance.now();
 try{useSprites=localStorage.getItem('nt_mode')!=='vector'}catch(e){}
 function showVector(anim,speaking){const f=FACES[anim]||FACES.idle;
  $('screen').className='screen '+(f.cls||'');$('eyeL').innerHTML=eye(150,f.e,f.e==='up'?0:2);$('eyeR').innerHTML=eye(250,f.e,f.e==='up'?0:2);
@@ -271,7 +271,7 @@ function frameAt(a,t){const fr=a.frames;const total=fr.reduce((s,f)=>s+f.ms,0);l
 function showSprite(anim){const cv=$('sp'),a=doc.animations[anim]||doc.animations.idle;if(!a)return;
  const fr=frameAt(a,performance.now()-t0);const W=doc.width,H=doc.height;if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}
  const g=cv.getContext('2d');const img=g.createImageData(W,H);const pal=doc.palette.map(hexRGBA);
- for(let y=0;y<H;y++)for(let x=0;x<W;x++){const p=pal[parseInt(fr.rows[y][x],16)];const i=(y*W+x)*4;img.data[i]=p[0];img.data[i+1]=p[1];img.data[i+2]=p[2];img.data[i+3]=p[3]}
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const p=pal[ALPHA.indexOf(fr.rows[y][x])];const i=(y*W+x)*4;img.data[i]=p[0];img.data[i+1]=p[1];img.data[i+2]=p[2];img.data[i+3]=p[3]}
  g.putImageData(img,0,0);$('screen').className='screen '+((doc.screen&&doc.screen.shape==='round')?'round ':'')+(anim==='offline'?'off':'')}
 function render(){if(!st.anim)return;const sprites=useSprites&&doc;$('sp').style.display=sprites?'block':'none';$('vec').style.display=sprites?'none':'block';
  $('mode').textContent='Showing: '+(sprites?'sprites':'vector face');$('mode').setAttribute('aria-pressed',String(!!sprites));
@@ -309,19 +309,19 @@ body{display:grid;gap:12px;grid-template-columns:minmax(0,1fr);max-width:1180px;
 label{font-size:14px}input[type=number]{width:5.5em}.msg{min-height:1.4em}.err{color:#b3261e}.ok{color:#1b7f46}
 </style></head><body>
 <div class="bar"><a href="/">&larr; Live view</a><b>Sprite editor</b><span class="pill" id="dirty">saved</span>
-<button id="save">Save</button><button class="alt" id="reload">Reload from disk</button><button class="alt" id="starter">Reset to starter art</button>
+<button id="save">Save</button><button class="alt" id="reload">Reload from disk</button><button class="alt" id="starter">Load the old built-in face art</button>
 <button class="alt" id="dl">Download .json</button><label class="pill">Open .json <input id="up" type="file" accept=".json,application/json"></label><span class="msg" id="msg" role="status"></span></div>
 <div class="main"><div><canvas id="cv" tabindex="0" aria-label="Pixel canvas"></canvas>
  <div class="bar" style="margin-top:8px"><button class="alt" data-tool="pencil" aria-pressed="true">Pencil (b)</button><button class="alt" data-tool="eraser" aria-pressed="false">Eraser (e)</button>
  <button class="alt" data-tool="fill" aria-pressed="false">Fill (g)</button><button class="alt" data-tool="pick" aria-pressed="false">Pick colour (i)</button>
- <label class="pill"><input type="checkbox" id="mirror" checked> mirror left/right (m)</label><label class="pill"><input type="checkbox" id="onion" checked> onion skin</label>
+ <label class="pill"><input type="checkbox" id="mirror"> mirror left/right (m)</label><label class="pill"><input type="checkbox" id="onion" checked> onion skin</label>
  <label class="pill"><input type="checkbox" id="grid" checked> grid</label><button class="alt" id="undo">Undo (ctrl+z)</button><button class="alt" id="redo">Redo</button></div></div>
 <div class="side">
  <label>Animation <select id="anim"></select></label><label class="pill"><input type="checkbox" id="loop"> loops</label>
  <div><b>Frames</b> <span class="note">(click one to edit)</span><div class="frames" id="frames"></div>
  <div class="bar" style="margin-top:6px"><button class="alt" id="addf">+ copy</button><button class="alt" id="delf">Delete</button><button class="alt" id="lf">&larr; move</button><button class="alt" id="rf">move &rarr;</button>
  <label>ms <input type="number" id="ms" min="40" max="10000" step="10"></label></div></div>
- <div><b>Colours</b> <span class="note">(0 is see-through)</span><div class="pal" id="pal" role="radiogroup" aria-label="Palette"></div>
+ <div><b>Colours</b> <span class="note">(0 is see-through, up to 64)</span><div class="pal" id="pal" role="radiogroup" aria-label="Palette"></div>
  <div class="bar" style="margin-top:6px"><label>Edit selected <input type="color" id="col"></label><button class="alt" id="addc">+ colour</button></div></div>
  <div><b>Screen preview</b><div class="bar"><label>width <input type="number" id="sw" min="32" max="2048"></label><label>height <input type="number" id="sh" min="32" max="2048"></label>
  <label>shape <select id="shape"><option value="square">square</option><option value="round">round</option></select></label></div>
@@ -329,7 +329,7 @@ label{font-size:14px}input[type=number]{width:5.5em}.msg{min-height:1.4em}.err{c
  <div class="note">The real screen size is UNVERIFIED until the board is known. Set it here and the preview follows; the art itself stays at its own size.</div></div>
 </div></div>
 <script>
-const $=id=>document.getElementById(id);const HEX='0123456789abcdef';
+const $=id=>document.getElementById(id);const HEX='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+-';
 let doc=null,anim='idle',fi=0,tool='pencil',color=1,undo=[],redo=[],dirty=false,drawing=false,Z=10,playT0=performance.now();
 const hexRGBA=c=>{const v=c.slice(1);return[parseInt(v.slice(0,2),16),parseInt(v.slice(2,4),16),parseInt(v.slice(4,6),16),v.length>6?parseInt(v.slice(6,8),16):255]};
 const rowsOf=()=>doc.animations[anim].frames[fi].rows;
@@ -378,11 +378,11 @@ $('addf').onclick=()=>{const fs=doc.animations[anim].frames;if(fs.length>=12){ms
 $('delf').onclick=()=>{const fs=doc.animations[anim].frames;if(fs.length<2){msg('An animation needs at least one frame.','err');return}fs.splice(fi,1);fi=Math.max(0,fi-1);setDirty(true);buildFrames();draw()};
 const mv=d=>{const fs=doc.animations[anim].frames;const j=fi+d;if(j<0||j>=fs.length)return;[fs[fi],fs[j]]=[fs[j],fs[fi]];fi=j;setDirty(true);buildFrames();draw()};$('lf').onclick=()=>mv(-1);$('rf').onclick=()=>mv(1);
 $('col').oninput=e=>{if(color===0){msg('Colour 0 stays see-through.');return}doc.palette[color]=e.target.value;setDirty(true);buildPal();buildFrames();draw()};
-$('addc').onclick=()=>{if(doc.palette.length>=16){msg('At most 16 colours.','err');return}doc.palette.push('#ff00ff');color=doc.palette.length-1;setDirty(true);buildPal()};
+$('addc').onclick=()=>{if(doc.palette.length>=64){msg('At most 64 colours.','err');return}doc.palette.push('#ff00ff');color=doc.palette.length-1;setDirty(true);buildPal()};
 ['sw','sh','shape'].forEach(i=>$(i).onchange=()=>{doc.screen={width:parseInt($('sw').value)||240,height:parseInt($('sh').value)||240,shape:$('shape').value};setDirty(true)});
 $('save').onclick=async()=>{const r=await send('PUT','/api/sprites',doc);const j=await r.json();if(r.ok){setDirty(false);msg('Saved to assets/sprites/. Commit it with git when you are happy.','ok')}else msg('Not saved: '+j.error,'err')};
 $('reload').onclick=()=>{if(dirty&&!confirm('Throw away your unsaved changes?'))return;load().then(()=>msg('Reloaded.'))};
-$('starter').onclick=()=>{if(!confirm('Replace everything on screen with the starter art? (Nothing is saved until you press Save.)'))return;load('/api/sprites/default').then(()=>{setDirty(true);msg('Starter art loaded. Press Save to keep it.')})};
+$('starter').onclick=()=>{if(!confirm('Replace everything on screen with the old built-in face art? (Nothing is saved until you press Save.)'))return;load('/api/sprites/default').then(()=>{setDirty(true);msg('Old face art loaded. Press Save to keep it.')})};
 $('dl').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(doc,null,1)],{type:'application/json'}));a.download=doc.name+'.json';a.click()};
 $('up').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());doc=d;anim=Object.keys(d.animations)[0];fi=0;undo=[];redo=[];setDirty(true);build();msg('Opened '+f.name+' (the server checks it when you Save).')}catch(x){msg('That is not a sprite file.','err')}};
 addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;const k=e.key.toLowerCase();
@@ -397,7 +397,7 @@ function preview(){if(!doc)return requestAnimationFrame(preview);const pv=$('pv'
  g.save();if(s.shape==='round'){g.beginPath();g.ellipse(dw/2,dh/2,dw/2,dh/2,0,0,7);g.clip()}const w=doc.width*scale*k,h=doc.height*scale*k;g.drawImage(off,(dw-w)/2,(dh-h)/2,w,h);g.restore();
  $('pvinfo').textContent=`${doc.width}x${doc.height} sprite on a ${s.width}x${s.height} ${s.shape} screen: ${scale}x whole-pixel zoom (${doc.width*scale}x${doc.height*scale} px), margin ${Math.max(0,s.width-doc.width*scale)/2}x${Math.max(0,s.height-doc.height*scale)/2} px. Playing: ${anim}`;
  requestAnimationFrame(preview)}
-load().then(()=>{preview();msg('Draw on the big grid. Mirror is on, so the face stays symmetric.')}).catch(()=>msg('Could not load the sprites.','err'));
+load().then(()=>{preview();msg('Draw on the big grid. Turn on mirror (m) only for symmetric art; the angled views are not symmetric.')}).catch(()=>msg('Could not load the sprites.','err'));
 </script></body></html>"""
 
 if __name__ == "__main__":
