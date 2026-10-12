@@ -13,6 +13,11 @@ Waveshare ESP32-S3-Touch-LCD-1.54 in a white enclosure. Label: display ST7789 24
 | Factory backup | `factory_backup.bin`, 16 MiB read in 60.5 s (kept by owner, never committed) |
 | Battery | none connected on this unit (screen dies when USB is removed) |
 
+## Pin map from the vendor demo source (public repo waveshareteam/ESP32-S3-Touch-LCD-1.54, ESP-IDF 5.5.1 `01_factory/components/esp_bsp`)
+Recorded in `firmware/hardware/board_waveshare_esp32s3_lcd154.h`. These come from Waveshare's code, not from our own run, so they stay UNVERIFIED until a test of ours drives each one.
+Display SPI2 (MOSI 39, SCLK 38, CS 21, DC 45, RST 40, BL 46); I2C SDA 42 / SCL 41; touch INT 48 / RST 47; I2S MCLK 8, BCLK 9, LRCK 10, DIN 11, DOUT 12; speaker amp enable 7; SD CLK 16, CMD 15, D0 17, D1 18, D2 13, D3 14;
+buttons BOOT 0, PWR 5, PLUS 4; battery ADC 1 (x3), battery gate 2, charging 3. Unknown: charger chip, battery size, the gate pin's exact effect (the demo's long PWR press drives it low to power off), and I2C addresses other than the IMU (0x6B).
+
 ## Candidate board: ESP32-S3-Touch-LCD-1.54 (VENDOR CLAIMS, UNVERIFIED)
 Taken from the listing text. Nothing here is measured. No GPIOs, battery capacity or current draw are known.
 
