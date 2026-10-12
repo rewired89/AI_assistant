@@ -13,6 +13,16 @@ Waveshare ESP32-S3-Touch-LCD-1.54 in a white enclosure. Label: display ST7789 24
 | Factory backup | `factory_backup.bin`, 16 MiB read in 60.5 s (kept by owner, never committed) |
 | Battery | none connected on this unit (screen dies when USB is removed) |
 
+## CONFIRMED BY OUR OWN FIRMWARE RUNS on the owner's unit (firmware/screen_test, firmware/input_test)
+| Item | Result |
+|---|---|
+| Display pins (MOSI 39, SCLK 38, CS 21, DC 45, RST 40) + ST7789 driver | Works: teal, pink, white, black cycle correct in person |
+| Backlight GPIO46, PWM 5 kHz | Works at 30% |
+| I2C SDA 42 / SCL 41 | Works. Devices answer at 0x15 (touch CST816), 0x18 (ES8311 codec), 0x40 (ES7210 mic ADC), 0x6B (QMI8658 IMU) |
+| Touch (CST816 at 0x15, regs 0x01..0x06, RST 47) | Works, x and y both span 0..239. Axis orientation vs the screen not yet checked; INT 48 not used (polling) |
+| Buttons BOOT/- GPIO0, PWR GPIO5, +/KEY GPIO4 | All three read active low (pressed = 0) |
+Still unverified: audio output and mic data, speaker amp enable 7, IMU data, SD card, battery ADC/gate/charging pins, charger chip, battery size.
+
 ## Pin map from the vendor demo source (public repo waveshareteam/ESP32-S3-Touch-LCD-1.54, ESP-IDF 5.5.1 `01_factory/components/esp_bsp`)
 Recorded in `firmware/hardware/board_waveshare_esp32s3_lcd154.h`. These come from Waveshare's code, not from our own run, so they stay UNVERIFIED until a test of ours drives each one.
 Display SPI2 (MOSI 39, SCLK 38, CS 21, DC 45, RST 40, BL 46); I2C SDA 42 / SCL 41; touch INT 48 / RST 47; I2S MCLK 8, BCLK 9, LRCK 10, DIN 11, DOUT 12; speaker amp enable 7; SD CLK 16, CMD 15, D0 17, D1 18, D2 13, D3 14;

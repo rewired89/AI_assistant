@@ -1,6 +1,6 @@
 // Waveshare ESP32-S3-Touch-LCD-1.54. All pins live here and nowhere else.
 // SOURCE: waveshareteam/ESP32-S3-Touch-LCD-1.54, examples/.../ESP-IDF-5.5.1/01_factory/components/esp_bsp (vendor demo source).
-// STATUS: from vendor source, NOT yet confirmed by a run on the owner's unit. Charger polarity, battery gate meaning and the divider ratio are UNVERIFIED.
+// STATUS: display, backlight, I2C, touch and the three buttons are CONFIRMED by our own runs (see docs/hardware.md). Everything else is from vendor source and unconfirmed. Charger polarity, battery gate meaning and the divider ratio are UNVERIFIED.
 #pragma once
 
 // Display ST7789 240x240 on SPI2, mode 3, 40 MHz in the vendor demo; colour inversion on; backlight PWM 5 kHz.
