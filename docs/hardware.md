@@ -3,6 +3,16 @@
 ## CONFIRMED FROM PHOTOS (owner's unit, label on the back of the enclosure; printed text, not measured)
 Waveshare ESP32-S3-Touch-LCD-1.54 in a white enclosure. Label: display ST7789 240x240, touch CST816, mic ADC ES7210 (AEC) with 2 mics, codec ES8311, speaker, QMI8658 6-axis IMU, 8 MB PSRAM, 16 MB flash, microSD slot, USB-C. Three side buttons labelled +/KEY, PWR, BOOT/-. Pin map, charger and battery: still UNVERIFIED (need the Waveshare wiki/schematic).
 
+## MEASURED with esptool 5.5.0 on the owner's unit (USB-Serial/JTAG, 303a:1001)
+| Item | Value |
+|---|---|
+| Chip | ESP32-S3 (QFN56), revision v0.2, dual core, 240 MHz, 40 MHz crystal |
+| PSRAM | 8 MB embedded (AP_3v3) |
+| Flash | 16 MB, quad, 3.3 V (manufacturer 0x20, device 0x4018) |
+| Factory firmware | Wi-Fi setup mode: AP SSID ESP32S3_1_54, page at 192.168.4.1 (seen on screen) |
+| Factory backup | `factory_backup.bin`, 16 MiB read in 60.5 s (kept by owner, never committed) |
+| Battery | none connected on this unit (screen dies when USB is removed) |
+
 ## Candidate board: ESP32-S3-Touch-LCD-1.54 (VENDOR CLAIMS, UNVERIFIED)
 Taken from the listing text. Nothing here is measured. No GPIOs, battery capacity or current draw are known.
 
