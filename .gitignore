@@ -17,3 +17,7 @@ dev/
 
 factory_backup.bin
 *.bin
+
+firmware/**/build/
+firmware/**/sdkconfig
+firmware/**/sdkconfig.old
