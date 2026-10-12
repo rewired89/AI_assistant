@@ -91,3 +91,4 @@
 - `power.woke.sleep_reason` (optional): set in `simulator/device.py::_wake`, read in `companion/application/proactive.py`; vector `protocol/vectors/sleep_and_wake.json`.
 - `companion/discoveries/{library,service}.py`: validated content library + `DailyInsights` (delivery, preferences, scripted follow-ups); `content/discoveries/*.yaml`; `tools/insights.py`; hooked into `ConversationEngine(insights=)` and `ProactiveDirector._deliver_insight`.
 - `docs/test-coverage.md`: spec 39 required-test map; `tests/companion/test_provider_swap.py`.
+- `companion/workbench.py` (catalog/check/Simulator/rebuild/WorkbenchApi), `tools/workbench.py` + `tools/workbench_page.py` (launcher + page, routes in `tools/desk_view.py`), `assets/sprites/manifest.json`, `tools/export_sprites.py` (.ntsp), `docs/workbench.md`.

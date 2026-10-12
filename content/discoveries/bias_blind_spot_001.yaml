@@ -1,0 +1,28 @@
+id: bias_blind_spot_001
+topic: relationships_and_conflict
+title: Why others seem biased and we seem fair
+hook: Why does it so often feel like other people are biased while you are simply seeing things as they are?
+researcher: Emily Pronin, Thomas Gilovich and Lee Ross
+publication_year: 2004
+source_title: 'Objectivity in the eye of the beholder: Divergent perceptions of bias in self versus others'
+source_url: https://doi.org/10.1037/0033-295X.111.3.781
+evidence_type: research_review
+summary: 'They described the bias blind spot: people tend to notice bias in other people''s judgments more readily than in their own. They argued that part of the reason is naive realism, the sense that you see things as they really are, and they linked this pattern to conflict between people and between groups.'
+limitations: This is a theoretical note that reviews evidence, so it describes a tendency across many people. It does not say who is right in any particular disagreement.
+everyday_example: Fans of rival teams can watch the same close call, and each can feel certain the referee was biased, while feeling they are just seeing the play as it was.
+reflection_question: Think of a time you and someone else saw the same moment differently. What might each of you have been noticing?
+optional_exercise: Next time you disagree about something small, try to say what the other person might have noticed that you did not.
+estimated_duration_seconds: 88
+sensitive_topic: false
+keywords:
+- perspective
+- bias
+- disagreement
+- conflict
+- interpretation
+verification:
+  status: verified
+  checked_on: '2026-10-12'
+  checked_by: Claude (web search, abstract level)
+  basis: Citation (Psychological Review 111(3), 781-799, doi 10.1037/0033-295X.111.3.781) and abstract confirmed on the Princeton record and a repository copy.
+  owner_confirmed: false

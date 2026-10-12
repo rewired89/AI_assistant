@@ -26,6 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--frame-ms", type=int, default=120)
     ap.add_argument("--idle-frames", help="glob of the 9 real idle frames (see split-sheet); gives real expressions")
     ap.add_argument("--idle-ms", type=int, default=200)
+    ap.add_argument("--no-extras", action="store_true", help="skip the workbench clips (look, walk, low battery, blink); for the egg")
     ap.add_argument("--split-sheet", nargs=2, metavar=("SHEET_PNG", "EXPORT_JSON"),
                     help="first cut a sprite-sheet export into PNGs inside --dir (rotations and the animation row)")
     a = ap.parse_args(argv)
@@ -46,7 +47,8 @@ def main(argv: list[str] | None = None) -> int:
         idle = sorted(glob.glob(a.idle_frames)) if a.idle_frames else None
         if a.idle_frames and not idle:
             raise sp.SpriteError(f"no files match {a.idle_frames!r}")
-        doc = si.build_set(views, a.name, frames=frames, frame_ms=a.frame_ms, idle_frames=idle, idle_ms=a.idle_ms)
+        doc = si.build_set(views, a.name, frames=frames, frame_ms=a.frame_ms, idle_frames=idle, idle_ms=a.idle_ms,
+                          extras=not a.no_extras)
         sp.save(a.out, doc)
     except (sp.SpriteError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)

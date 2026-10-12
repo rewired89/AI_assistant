@@ -31,7 +31,8 @@ def views(tmp_path):
 def test_builds_a_valid_set_with_every_animation(views):
     doc = si.build_set(views)
     from protocol.schema_consts import ANIMATIONS
-    assert set(doc["animations"]) == set(ANIMATIONS) and doc["width"] == doc["height"] == 16
+    assert set(doc["animations"]) == set(ANIMATIONS) | {"look_left", "look_right", "walk", "low_battery"} and doc["width"] == doc["height"] == 16
+    assert set(si.build_set(views, extras=False)["animations"]) == set(ANIMATIONS)
     assert doc["palette"][0] == "#00000000" and len(doc["palette"]) <= 64
 
 

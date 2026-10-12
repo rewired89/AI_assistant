@@ -22,6 +22,7 @@ from typing import Callable
 
 from companion import sprites as sp
 from companion import sprites_default
+from companion.workbench import WorkbenchApi
 
 COMMANDS = {"press", "mute", "wake", "battery"}
 MAX_BODY = sp.MAX_BYTES + 4096
@@ -34,6 +35,7 @@ class ViewServer:
         self.snapshot, self.on_command, self.port = snapshot, on_command, port
         self.sprites_path = Path(sprites_path)
         self.rev = 0                                           # bumped on every sprite save so open pages reload them
+        self.workbench = WorkbenchApi(self.sprites_path.parent)
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.url = ""
@@ -111,6 +113,19 @@ class ViewServer:
                     return self._send(200, VIEWER.encode(), "text/html")
                 if path == "/editor":
                     return self._send(200, EDITOR.encode(), "text/html")
+                if path == "/workbench":
+                    from tools.workbench_page import PAGE
+                    return self._send(200, PAGE.encode(), "text/html")
+                if path == "/api/catalog":
+                    try:
+                        return self._json(200, server.workbench.catalog())
+                    except Exception as e:
+                        return self._json(500, {"error": f"catalog failed: {type(e).__name__}: {str(e)[:200]}"})
+                if path == "/api/sprites" and "set" in parse_qs(urlsplit(self.path).query):
+                    try:
+                        return self._json(200, server.workbench.sprites(parse_qs(urlsplit(self.path).query)["set"][0][:40]))
+                    except (KeyError, sp.SpriteError):
+                        return self._json(404, {"error": "no such sprite set"})
                 if path == "/api/state":
                     try:
                         return self._json(200, {**server.snapshot(), "rev": server.rev})
@@ -128,6 +143,17 @@ class ViewServer:
             def do_POST(self):
                 if not (self._host_ok() and self._write_ok()):
                     return
+                if self.path in ("/api/refresh", "/api/simulate"):
+                    raw = self._body()
+                    if raw is None:
+                        return
+                    try:
+                        body = json.loads(raw) if raw else {}
+                        if not isinstance(body, dict):
+                            raise ValueError
+                        return self._json(200, server.workbench.refresh() if self.path == "/api/refresh" else server.workbench.simulate(body))
+                    except (ValueError, TypeError) as e:
+                        return self._json(400, {"error": str(e)[:200] or "bad request"})
                 if self.path != "/api/cmd":
                     return self._json(404, {"error": "not found"})
                 raw = self._body()

@@ -1,0 +1,28 @@
+id: happiness_interventions_001
+topic: identity_and_growth
+title: Small experiments on what supports you
+hook: What if something that supports your wellbeing could be tested like any other idea?
+researcher: Martin Seligman, Tracy Steen, Nansook Park and Christopher Peterson
+publication_year: 2005
+source_title: 'Positive psychology progress: Empirical validation of interventions'
+source_url: https://pubmed.ncbi.nlm.nih.gov/16045394/
+evidence_type: original_study
+summary: They tested five exercises meant to increase happiness against one plausible control exercise, in an online study where people were randomly assigned to six groups. They reported that three of the exercises lastingly increased happiness and lowered depressive symptoms. The paper also discussed a classification of character strengths and virtues, with cross-cultural findings suggesting these strengths show up widely.
+limitations: It was an internet study, and later researchers re-examined these findings, so treat it as one study and not a rule. It does not say what any one person should try.
+everyday_example: Trying one small thing for a week, like noticing something that went well each evening, is a way to run your own tiny experiment.
+reflection_question: If you ran a one-week experiment on something that supports you, what would you try?
+optional_exercise: Pick one small thing to try for a week and decide in advance how you would tell whether it helped.
+estimated_duration_seconds: 83
+sensitive_topic: false
+keywords:
+- strengths
+- happiness
+- experiment
+- wellbeing
+- growth
+verification:
+  status: verified
+  checked_on: '2026-10-12'
+  checked_by: Claude (web search, abstract level)
+  basis: Citation (American Psychologist 60(5), 410-421, PubMed 16045394), the six-group random-assignment internet design and the three lasting interventions confirmed from the PubMed abstract; the later re-analysis was confirmed from a search result. Which three exercises worked was not confirmed and is not stated.
+  owner_confirmed: false

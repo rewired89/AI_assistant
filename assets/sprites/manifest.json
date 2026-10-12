@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "note": "Describes every animation the workbench knows about. status: real_frames = drawn frames from the art tool (only in the sets listed in real_in); composed = built from her real still poses with a small shift or an original overlay symbol; placeholder = a stand-in that is NOT the final art; missing = no frames exist yet. A set that has no frames for an id is reported missing no matter what this file says.",
+  "categories": ["idle", "emotions", "movement", "interaction", "sleep", "system"],
+  "sets": {
+    "default": {"label": "Nine Tails (adult)", "source_dir": "source", "idle_frames": "source/sheet/idle_*.png"},
+    "baby": {"label": "Baby fox", "source_dir": "source_baby"},
+    "egg": {"label": "Egg", "source_dir": "source_egg", "not_applicable": ["blink", "look_left", "look_right", "walk", "tail_wag", "stretch", "lie_down", "low_battery"]}
+  },
+  "animations": {
+    "idle":         {"category": "idle", "label": "Idle (breathing and small expressions)", "kind": "protocol", "status": "composed", "real_in": ["default"], "note": "default: the nine real idle frames from the art tool"},
+    "blink":        {"category": "idle", "label": "Blinking", "kind": "workbench", "status": "placeholder", "real_in": [], "note": "uses a real closed-eye frame, but the head pose differs slightly from the open-eye frame; replace with a true blink frame"},
+    "calm":         {"category": "emotions", "label": "Calm", "kind": "protocol", "status": "composed"},
+    "happy":        {"category": "emotions", "label": "Happy", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "excited":      {"category": "emotions", "label": "Excited", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "celebratory":  {"category": "emotions", "label": "Celebrating", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "sad":          {"category": "emotions", "label": "Sad or disappointed", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "angry":        {"category": "emotions", "label": "Angry", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "confused":     {"category": "emotions", "label": "Confused", "kind": "protocol", "status": "composed"},
+    "surprised":    {"category": "emotions", "label": "Surprised", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "curious":      {"category": "emotions", "label": "Curious (head turns)", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "affectionate": {"category": "emotions", "label": "Affectionate", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "reflective":   {"category": "emotions", "label": "Reflective", "kind": "protocol", "status": "composed"},
+    "look_left":    {"category": "movement", "label": "Looking left", "kind": "workbench", "status": "composed", "note": "turns through her real left-facing poses"},
+    "look_right":   {"category": "movement", "label": "Looking right", "kind": "workbench", "status": "composed", "note": "turns through her real right-facing poses"},
+    "walk":         {"category": "movement", "label": "Walking", "kind": "workbench", "status": "placeholder", "note": "side view bobbing in place; there is no real walk cycle art yet"},
+    "tail_wag":     {"category": "movement", "label": "Tail wagging", "kind": "workbench", "status": "missing", "note": "needs frames with moving tails"},
+    "stretch":      {"category": "movement", "label": "Stretching", "kind": "workbench", "status": "missing", "note": "needs new art"},
+    "playing":      {"category": "interaction", "label": "Playing", "kind": "protocol", "status": "composed"},
+    "eating":       {"category": "interaction", "label": "Eating", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "listening":    {"category": "interaction", "label": "Listening", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "thinking":     {"category": "interaction", "label": "Thinking", "kind": "protocol", "status": "composed"},
+    "talking":      {"category": "interaction", "label": "Speaking", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "sleepy":       {"category": "sleep", "label": "Sleepy", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "sleeping":     {"category": "sleep", "label": "Sleeping", "kind": "protocol", "status": "composed", "real_in": ["default"]},
+    "waking":       {"category": "sleep", "label": "Waking up", "kind": "protocol", "status": "composed"},
+    "lie_down":     {"category": "sleep", "label": "Lying down", "kind": "workbench", "status": "missing", "note": "needs new art"},
+    "low_battery":  {"category": "system", "label": "Low battery", "kind": "workbench", "status": "composed", "note": "sleepy pose plus a small battery icon; the robot protocol does not carry this name yet, the behaviour engine asks for 'sleepy'"},
+    "offline":      {"category": "system", "label": "Offline", "kind": "protocol", "status": "composed", "note": "greyed copy of her pose"}
+  },
+  "screens": [
+    {"id": "vendor_240", "label": "240 x 240 square (vendor listing, UNVERIFIED)", "width": 240, "height": 240, "shape": "square"},
+    {"id": "round_240", "label": "240 x 240 round", "width": 240, "height": 240, "shape": "round"},
+    {"id": "small_128", "label": "128 x 128 square", "width": 128, "height": 128, "shape": "square"},
+    {"id": "wide_320", "label": "320 x 240 landscape", "width": 320, "height": 240, "shape": "square"}
+  ]
+}

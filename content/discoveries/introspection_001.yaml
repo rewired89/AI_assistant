@@ -1,0 +1,28 @@
+id: introspection_001
+topic: self_awareness
+title: How well do we know why we did it?
+hook: How sure are you that you know why you made a choice?
+researcher: Richard Nisbett and Timothy Wilson
+publication_year: 1977
+source_title: 'Telling more than we can know: Verbal reports on mental processes'
+source_url: https://deepblue.lib.umich.edu/items/c810051d-bb3a-48c7-86ae-da8ef48caa77
+evidence_type: research_review
+summary: They reviewed evidence suggesting that people have little or no direct access to some of their own mental processes. In some studies people were unaware of something that influenced their response, or unaware that it had any effect. They proposed that people often explain themselves using everyday theories about what usually causes such things, rather than direct insight.
+limitations: This is a 1977 review that has been widely discussed since, so treat it as one influential argument. It does not say our explanations are always wrong, only that they can be less certain than they feel.
+everyday_example: Someone might say they picked a restaurant for the food, when the real nudge was walking past it right after a friend mentioned it.
+reflection_question: When you explain why you reacted a certain way, how could you check whether that explanation really fits?
+optional_exercise: Next time you explain a choice, try starting with 'one possible reason is' and notice how that feels.
+estimated_duration_seconds: 86
+sensitive_topic: false
+keywords:
+- awareness
+- reason
+- why
+- explain
+- introspection
+verification:
+  status: verified
+  checked_on: '2026-10-12'
+  checked_by: Claude (web search, abstract level)
+  basis: Citation (Psychological Review 84(3), 231-259) and the full abstract confirmed on a university repository and a publisher-linked copy; summary stays inside the abstract.
+  owner_confirmed: false

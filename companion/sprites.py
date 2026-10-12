@@ -18,6 +18,11 @@ from pathlib import Path
 
 from protocol.schema_consts import ANIMATIONS
 
+# Clips the workbench can show that the device protocol does not (yet) have: the robot cannot be asked for these by name.
+# They live in the same file so there is one source of truth; promote one to the protocol enum when firmware needs it.
+EXTRA_ANIMATIONS = frozenset({"blink", "look_left", "look_right", "low_battery", "walk", "tail_wag", "stretch", "lie_down"})
+KNOWN_ANIMATIONS = ANIMATIONS | EXTRA_ANIMATIONS
+
 VERSION = 1
 MIN_SIZE, MAX_SIZE = 8, 128
 MAX_COLORS = 64
@@ -68,7 +73,7 @@ def validate(doc: object) -> dict:
     if not isinstance(anims, dict) or not anims:
         raise SpriteError("animations must be a non-empty object")
     for name, a in anims.items():
-        if name not in ANIMATIONS:
+        if name not in KNOWN_ANIMATIONS:
             raise SpriteError(f"unknown animation {name!r}")
         if not isinstance(a, dict) or set(a) - {"loop", "frames"} or not isinstance(a.get("loop", True), bool):
             raise SpriteError(f"{name}: bad animation entry")

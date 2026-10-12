@@ -29,6 +29,12 @@ python -m tools.insights show habit_formation_001
 ```
 Read the sources (links are printed). If an entry matches its source, confirm it: `python -m tools.insights verify habit_formation_001 --by "Your Name" --basis "read the abstract at the link, matches"`. She turns them on by saying "turn on daily insights".
 
+## See her on screen (no robot needed)
+```
+python -m tools.workbench
+```
+Open `http://localhost:8765/workbench`. Guide: `docs/workbench.md`. Check the art files: `python -m tools.workbench check`.
+
 ## 2. Board arrives (do these in order, send me every output)
 1. Photograph both sides. Do NOT flash anything yet.
 2. Install the tool: `pip install esptool`

@@ -27,6 +27,7 @@ GLYPHS = {
     "anger": ["XX.XX", "X...X", ".....", "X...X", "XX.XX"],
     "tear": ["X", "X", "X"],
     "dot": ["XX", "XX"],
+    "battery": ["XXXXXX.", "X....XX", "X.X..XX", "X....XX", "XXXXXX."],
 }
 
 
@@ -149,7 +150,7 @@ def pick_colors(palette: list[tuple]) -> dict[str, int]:
 
 def build_set(views: dict[str, str | Path], name: str = "default", screen: dict | None = None,
               frames: dict[str, list[str | Path]] | None = None, frame_ms: int = 120,
-              idle_frames: list[str | Path] | None = None, idle_ms: int = 200) -> dict:
+              idle_frames: list[str | Path] | None = None, idle_ms: int = 200, extras: bool = True) -> dict:
     missing = [v for v in VIEWS if v not in views]
     if missing:
         raise sp.SpriteError(f"missing views: {missing}")
@@ -211,6 +212,12 @@ def build_set(views: dict[str, str | Path], name: str = "default", screen: dict 
         "reflective": [fr(L, 1300), fr(shift(L, 0, 1), 1300)],
         "offline": [fr(greyed(shift(A, 0, 2)), 1500)],
     }
+    if extras:
+        # Workbench clips (sp.EXTRA_ANIMATIONS). Built from the same stills, never stretched: view turns, a 1 px bob, an icon.
+        anims["look_left"] = [fr(F, 500), fr(B, 250), fr(L, 900), fr(B, 250)]
+        anims["look_right"] = [fr(F, 500), fr(A, 250), fr(Rt, 900), fr(A, 250)]
+        anims["walk"] = [fr(Rt, 180), fr(shift(Rt, 0, -1), 180)]                 # side view bobbing: a stand-in, not a walk cycle
+        anims["low_battery"] = [fr(stamp(shift(A, 0, 2), "battery", ox - 1, oy, C["coral"]), 700), fr(shift(A, 0, 3), 700)]
     if len(idle_loaded) == 9:
         # Real animation frames: 0 eyes open + small "o" mouth, 1 eyes squeezed shut (laughing), 2 open smile, 3 tiny open mouth,
         # 4/6 neutral, 5 closed line mouth, 7 smile with tongue, 8 closed smile. Expressions come from these, not from shifting.
@@ -232,6 +239,9 @@ def build_set(views: dict[str, str | Path], name: str = "default", screen: dict 
             "sleeping": [fr(stamp(shift(I[1], 0, 3), "z_small", ox + 2, oy + 3, C["ink"]), 900), fr(stamp(shift(I[1], 0, 3), "z", ox, oy, C["ink"]), 900)],
             "curious": [fr(A, 700), fr(I[0], 500), fr(B, 700), fr(I[0], 500)],
         })
+        if extras:
+            anims["blink"] = [fr(I[4], 1700), fr(I[1], 110)]                     # a real closed-eye frame; the head pose differs a little
+            anims["low_battery"] = [fr(stamp(shift(I[3], 0, 2), "battery", ox - 1, oy, C["coral"]), 700), fr(shift(I[3], 0, 3), 700)]
     elif idle_loaded:
         anims["idle"] = [fr(rows_from(s, px, mapping), idle_ms) for s, px in idle_loaded][:sp.MAX_FRAMES]
     out = {a: {"loop": a != "waking", "frames": f} for a, f in anims.items()}

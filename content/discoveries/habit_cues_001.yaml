@@ -1,0 +1,28 @@
+id: habit_cues_001
+topic: habits_and_behavior_change
+title: Habits and the places that trigger them
+hook: Why can a place or a moment trigger a habit before you have decided anything?
+researcher: Wendy Wood and David Neal
+publication_year: 2007
+source_title: A new look at habits and the habit-goal interface
+source_url: https://doi.org/10.1037/0033-295X.114.4.843
+evidence_type: theory
+summary: They described a model in which habits form gradually as a response becomes linked to the contexts where it was repeated, such as places and the action that came just before. Later, simply perceiving that context can trigger the response without a goal being involved. They also discussed how goals and habits work together, for example when goals drive the repetition that forms a habit.
+limitations: This is a theoretical model that brings research together, not a single experiment. It discusses changing habits in terms of managing the cues that trigger them, and that is one perspective among several.
+everyday_example: Putting your running shoes by the door gives a plan a cue you will see, while leaving your phone on the couch is a cue for scrolling.
+reflection_question: Which cue in your day starts a habit you like, and is there one you would be curious to change?
+optional_exercise: Pick one habit and just notice the place or moment that usually starts it.
+estimated_duration_seconds: 89
+sensitive_topic: false
+keywords:
+- habit
+- cue
+- context
+- environment
+- routine
+verification:
+  status: verified
+  checked_on: '2026-10-12'
+  checked_by: Claude (web search, abstract level)
+  basis: Citation (Psychological Review 114(4), 843-863, doi 10.1037/0033-295X.114.4.843) and the context-cue model confirmed from abstract fragments on the authors' lab site and library records.
+  owner_confirmed: false
