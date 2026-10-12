@@ -20,7 +20,8 @@
 
 static const char *TAG = "nt_audio_test";
 #define RATE 16000
-#define OUT_VOLUME 35      // 0..100 in esp_codec_dev units; kept low on purpose
+#define OUT_VOLUME_MAX 90  // 0..100 in esp_codec_dev units (a dB scale: low values are inaudible); hard cap, never exceeded
+#define PLAYBACK_VOLUME 80
 #define MIC_GAIN_DB 30.0
 #define REC_SECONDS 3
 #define REC_BYTES (RATE * REC_SECONDS * 2)
@@ -76,9 +77,10 @@ static void audio_init(i2c_master_bus_handle_t bus)
     ESP_ERROR_CHECK(esp_codec_dev_set_in_channel_gain(in_dev, ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0), MIC_GAIN_DB));
 }
 
-static void play(const int16_t *s, size_t samples)
+static void play(const int16_t *s, size_t samples, int vol)
 {
-    esp_codec_dev_set_out_vol(out_dev, OUT_VOLUME);
+    if (vol > OUT_VOLUME_MAX) vol = OUT_VOLUME_MAX;
+    esp_codec_dev_set_out_vol(out_dev, vol);
     const size_t chunk = 1600;  // 100 ms
     for (size_t i = 0; i < samples; i += chunk) {
         size_t n = (samples - i) < chunk ? (samples - i) : chunk;
@@ -100,8 +102,12 @@ static void tone(void)
         float env = i < 800 ? i / 800.0f : (i > n - 800 ? (n - i) / 800.0f : 1.0f);  // fade in and out, no clicks
         b[i] = (int16_t)(6000 * env * sinf(2.0f * (float)M_PI * 440.0f * i / RATE));
     }
-    ESP_LOGI(TAG, "playing a 440 Hz tone, volume %d", OUT_VOLUME);
-    play(b, n);
+    const int steps[4] = {50, 65, 80, 90};  // quiet to louder; tell us at which step you first hear it
+    for (int k = 0; k < 4; k++) {
+        ESP_LOGI(TAG, "beep %d of 4 at volume %d", k + 1, steps[k]);
+        play(b, n, steps[k]);
+        vTaskDelay(pdMS_TO_TICKS(400));
+    }
     free(b);
 }
 
@@ -114,9 +120,11 @@ static void record(void)
         ESP_LOGE(TAG, "no memory for the recording");
         return;
     }
-    ESP_LOGI(TAG, "recording %d s: speak now", REC_SECONDS);
     esp_codec_dev_set_in_gain(in_dev, MIC_GAIN_DB);
     const size_t chunk = RATE / 10;  // 100 ms
+    vTaskDelay(pdMS_TO_TICKS(300));   // let the button click die down
+    for (int k = 0; k < 3; k++) esp_codec_dev_read(in_dev, rec, chunk * 2);  // drop stale audio
+    ESP_LOGI(TAG, "recording %d s: speak now", REC_SECONDS);
     int peak = 0;
     for (size_t i = 0; i < (size_t)RATE * REC_SECONDS; i += chunk) {
         int err = esp_codec_dev_read(in_dev, rec + i, chunk * 2);
@@ -160,7 +168,7 @@ void app_main(void)
             if (!rec) ESP_LOGW(TAG, "nothing recorded yet");
             else {
                 ESP_LOGI(TAG, "playing back the recording");
-                play(rec, RATE * REC_SECONDS);
+                play(rec, RATE * REC_SECONDS, PLAYBACK_VOLUME);
             }
         }
         for (int i = 0; i < 3; i++) prev[i] = now[i];
