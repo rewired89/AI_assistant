@@ -49,14 +49,62 @@ def check(mic, seconds: float = 5.0, out=print, per_line_s: float = 0.2) -> dict
     return {"verdict": verdict, "peak": peak, "median": med, "status": status}
 
 
+def stats(pcm: bytes) -> dict:
+    """Plain numbers about a recording: typical level, peak, constant offset, share of clipped samples."""
+    import struct
+    n = len(pcm) // 2
+    if n == 0:
+        return {"samples": 0}
+    x = struct.unpack(f"<{n}h", pcm[:n * 2])
+    mean = sum(x) / n
+    step = 1600
+    lv = sorted(rms(pcm[i * 2:(i + step) * 2]) for i in range(0, n - step + 1, step)) or [0.0]
+    return {"samples": n, "median_level": round(lv[len(lv) // 2]), "peak_sample": max(abs(v) for v in x),
+            "dc_offset": round(mean), "clipped_pct": round(100 * sum(1 for v in x if abs(v) >= 32760) / n, 2)}
+
+
+def compare(device: str | None, seconds: float = 4.0, out=print) -> None:
+    """Records the SAME seconds two ways, the way that worked in bench_stt (arecord to a WAV file) and the way the desk
+    robot does it (raw bytes through a pipe), and prints numbers for both. Saves both so you can play them."""
+    import wave
+    dev = ["-D", device] if device else []
+    out(f"1/2 file method (arecord -> mic_file.wav, {seconds:.0f} s). SPEAK NOW.")
+    r = subprocess.run(["arecord", "-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-d", str(int(seconds)), *dev, "mic_file.wav"],
+                       capture_output=True, text=True)
+    if r.returncode:
+        out("   arecord failed: " + (r.stderr.strip() or str(r.returncode)))
+    else:
+        with wave.open("mic_file.wav") as w:
+            out(f"   {w.getframerate()} Hz, {w.getnchannels()} ch, {w.getsampwidth() * 8} bit -> {stats(w.readframes(w.getnframes()))}")
+    out(f"2/2 pipe method (what the desk robot uses -> mic_pipe.wav, {seconds:.0f} s). SPEAK NOW.")
+    mic, buf, t0 = ArecordMic(device), b"", time.time()
+    try:
+        while time.time() - t0 < seconds:
+            c = mic.read()
+            buf += c or b""
+            if not c:
+                time.sleep(0.02)
+        out("   status: " + mic.status())
+    finally:
+        mic.close()
+    with wave.open("mic_pipe.wav", "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(buf)
+    out(f"   {stats(buf)}")
+    out("Play them: aplay mic_file.wav ; aplay mic_pipe.wav")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--device")
     ap.add_argument("--seconds", type=float, default=5.0)
+    ap.add_argument("--compare", action="store_true", help="record both ways (file vs pipe) and print numbers")
     a = ap.parse_args(argv)
     if shutil.which("arecord") is None:
         print("arecord is not installed: sudo apt install alsa-utils", file=sys.stderr)
         return 1
+    if a.compare:
+        compare(a.device, a.seconds)
+        return 0
     print("Input devices (arecord -l):")
     print(subprocess.run(["arecord", "-l"], capture_output=True, text=True).stdout or "  (none listed)")
     print(f"Recording {a.seconds:.0f} s. SPEAK NOW.")

@@ -91,3 +91,10 @@ def test_one_loud_click_is_not_too_loud():
             return "ok"
     r = check(M(), seconds=0.3, out=lambda *_: None)
     assert not r["verdict"].startswith("TOO LOUD")
+
+
+def test_stats_reports_offset_and_clipping():
+    import struct
+    from tools.mic_check import stats
+    s = stats(struct.pack("<3200h", *([32767] * 3200)))
+    assert s["clipped_pct"] == 100 and s["dc_offset"] == 32767 and s["median_level"] == 0

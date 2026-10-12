@@ -12,6 +12,12 @@ Speak for 5 seconds. A moving bar means the mic works. The last line says the ve
 If it names the wrong device: `python -m tools.mic_check --device plughw:1,0` (use the card,device numbers from `arecord -l`).
 Then run the robot: `python -m tools.desk_robot run` and send me the `You said` line, the mic bar behaviour and any `[...]` terminal lines.
 
+Still silent? Run the comparison. It records once the way that worked in the first test and once the way the robot does it:
+```
+python -m tools.mic_check --compare
+```
+Speak both times. Send me the two lines of numbers (do not type them as commands). Play them with `aplay mic_file.wav` and `aplay mic_pipe.wav`.
+
 ## 2. Board arrives (do these in order, send me every output)
 1. Photograph both sides. Do NOT flash anything yet.
 2. Install the tool: `pip install esptool`
