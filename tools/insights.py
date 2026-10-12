@@ -44,7 +44,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if bad else 0
     path = lib / f"{a.id}.yaml"
     if not path.exists():
-        print(f"no such entry: {a.id}", file=sys.stderr)
+        print(f"no such entry: {a.id}. ID is a placeholder: use a real name from this list:\n  " +
+              "\n  ".join(e.id for e in entries), file=sys.stderr)
         return 1
     d = yaml.safe_load(path.read_text())
     if a.cmd == "show":
