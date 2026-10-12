@@ -1,0 +1,28 @@
+id: affect_labeling_001
+topic: emotional_regulation
+title: Putting feelings into words
+hook: Could simply finding the right word for a feeling change how strongly you react to it?
+researcher: Matthew Lieberman and colleagues
+publication_year: 2007
+source_title: 'Putting feelings into words: Affect labeling disrupts amygdala activity in response to affective stimuli'
+source_url: https://pubmed.ncbi.nlm.nih.gov/17576282/
+evidence_type: original_study
+summary: In a brain-imaging experiment, people looked at emotional pictures. When they put the feeling into words, activity in the amygdala and related regions was lower than with other kinds of processing, and activity in part of the prefrontal cortex was higher. The authors suggest that labeling may reduce emotional reactivity along that pathway.
+limitations: This was a lab experiment with pictures, so it cannot tell us that labeling works for every feeling in daily life. A brain-scan pattern is also not the same as feeling better.
+everyday_example: Saying 'I think I am more disappointed than angry' instead of just 'I am upset' gives the feeling a more exact shape.
+reflection_question: The next time something stirs you up, which word would you pick, and does a second word fit even better?
+optional_exercise: Try naming one feeling with two different words today and notice which one fits better.
+estimated_duration_seconds: 80
+sensitive_topic: false
+keywords:
+- emotion
+- feeling
+- words
+- label
+- name
+verification:
+  status: verified
+  checked_on: '2026-10-12'
+  checked_by: Claude (web search, abstract level)
+  basis: Citation (Psychological Science 18(5), 421-428, PubMed 17576282) and the amygdala / right ventrolateral prefrontal findings confirmed from the abstract. Sample size not stated.
+  owner_confirmed: false

@@ -33,6 +33,7 @@ from .learning import MemoryTalk, RoutineLearner
 from .memory import MemoryStore, ReflectionVault
 from .personality import config as pc
 from .personality.adaptation import PersonalityAdapter
+from .discoveries import DailyInsights, load_dir as load_discoveries
 from .psychology.engine import PsychologyEngine
 from .psychology.safety import SafetyGate
 from .psychology.settings import PsychologySettings
@@ -208,15 +209,18 @@ class Companion:
         self.adapter = PersonalityAdapter(data / "personality_drift.json", self.personality, clock, self.tz,
                                           enabled=ad.get("enabled", True))
         self.memory_talk = MemoryTalk(self.memory, self.learner, clock=clock, adapter=self.adapter)
+        entries, self.library_problems = load_discoveries(ROOT / "content" / "discoveries")
+        self.insights = DailyInsights(data / "insights.json", entries, clock, self.tz,
+                                      quiet=lambda: self.behavior.settings.quiet_mode)
         self.conversation = ConversationEngine(
             self.llm, eff, self.state, clock, memory=self.memory, user_name=self.onboarding.user_name, tz=self.tz,
             dialogue=LinePicker(load_templates(sp), random.Random()), safety=self.gate, psychology=self.psychology,
-            learner=self.learner, memory_talk=self.memory_talk)
+            learner=self.learner, memory_talk=self.memory_talk, insights=self.insights)
         self.behavior = BehaviorEngine(self.personality, self.state, clock, random.Random())
         self.pipeline = VoicePipeline(self.client, stt or self._make_stt(), tts or self._make_tts(), self.conversation, clock,
                                       engine=self.behavior, onboarding=self.onboarding, lines=load_lines(sp))
         self.director = ProactiveDirector(self.behavior, self.conversation, self.pipeline, clock, memory=self.memory,
-                                          state_store=self.state_store, psychology=self.psychology)
+                                          state_store=self.state_store, psychology=self.psychology, insights=self.insights)
         self._closers += [self.pipeline.close, self.director.close]
         self._started = False
 

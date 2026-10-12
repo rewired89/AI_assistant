@@ -76,12 +76,13 @@ class ConversationEngine:
                  clock: Callable[[], float], memory=None, user_name: Callable[[], str | None] = lambda: None,
                  config: EngineConfig | None = None, tz: tzinfo = timezone.utc,
                  on_sensitive: Callable[[dict], None] | None = None, dialogue: LinePicker | None = None,
-                 safety=None, psychology=None, learner=None, memory_talk=None):
+                 safety=None, psychology=None, learner=None, memory_talk=None, insights=None):
         self.llm, self.cfg_fn, self.state, self.clock, self.memory = llm, personality_cfg, state, clock, memory
         self.user_name, self.cfg, self.tz, self.on_sensitive = user_name, config or EngineConfig(), tz, on_sensitive
         self.dialogue = dialogue or LinePicker(load_templates(None))
         self.safety, self.psychology = safety, psychology      # SafetyGate / PsychologyEngine (optional)
         self.learner, self.memory_talk = learner, memory_talk  # RoutineLearner / MemoryTalk (optional)
+        self.insights = insights                                # DailyInsights (optional): scripted, verified content only
         self.canary = "tok-" + uuid.uuid4().hex
         self.history: deque = deque(maxlen=self.cfg.history_turns * 2)    # RAM only, never persisted
         self._confirm: dict | None = None
@@ -115,6 +116,12 @@ class ConversationEngine:
             if asked is not None:
                 self._confirm = None
                 return asked
+        if self.insights is not None:                           # daily psychology discoveries: scripted from the verified library
+            got = self.insights.handle(utterance)
+            if got is not None:
+                self._confirm = None
+                text, style, interaction = got
+                return Reply(text, style, interaction=interaction)
         answered = self._answer_confirmation(utterance)
         if answered:
             return answered

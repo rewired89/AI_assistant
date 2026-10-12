@@ -1,0 +1,28 @@
+id: self_compassion_001
+topic: resilience_and_adaptation
+title: Being kind after a mistake
+hook: When something goes wrong, is being harsh with yourself the only way to take it seriously?
+researcher: Kristin Neff
+publication_year: 2003
+source_title: 'Self-compassion: An alternative conceptualization of a healthy attitude toward oneself'
+source_url: https://www.scinapse.io/papers/1969977883
+evidence_type: theory
+summary: 'She defined self-compassion as having three parts: self-kindness, which means being understanding with yourself when you face pain or failure instead of harshly self-critical; common humanity, which means seeing your struggle as part of the shared human experience; and mindfulness, which means noticing painful feelings without getting swept away.'
+limitations: This paper defines the idea and does not test a treatment. It is early work on an attitude toward yourself, and later research is needed to say what it can and cannot do.
+everyday_example: After a mistake at work, you can notice 'that was a rough moment, and everyone has them' and then decide what to do next, instead of piling on.
+reflection_question: When something does not go well, what does the voice in your head sound like, and what would you say to a friend in the same spot?
+optional_exercise: Next time you catch a harsh thought, try rewording it the way you would for a friend. Just once.
+estimated_duration_seconds: 84
+sensitive_topic: false
+keywords:
+- compassion
+- mistake
+- kind
+- failure
+- resilience
+verification:
+  status: verified
+  checked_on: '2026-10-12'
+  checked_by: Claude (web search, abstract level)
+  basis: Citation (Self and Identity 2(2), 85-101, 2003) and the three components confirmed from abstract-level sources. The link is an aggregator record, a publisher DOI was not opened.
+  owner_confirmed: false

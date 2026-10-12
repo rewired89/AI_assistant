@@ -22,6 +22,13 @@ Fan or hum noise: the desk robot now removes steady background noise from the mi
 Turn it off to compare: `python -m tools.desk_robot run --no-denoise`. It cannot remove changing noise (music, voices, door slams).
 Also lower the mic input volume in system sound settings if the fan is still loud.
 
+## Daily psychology discoveries (you or her, spot-check once)
+```
+python -m tools.insights check
+python -m tools.insights show habit_formation_001
+```
+Read the sources (links are printed). If an entry matches its source, confirm it: `python -m tools.insights verify habit_formation_001 --by "Your Name" --basis "read the abstract at the link, matches"`. She turns them on by saying "turn on daily insights".
+
 ## 2. Board arrives (do these in order, send me every output)
 1. Photograph both sides. Do NOT flash anything yet.
 2. Install the tool: `pip install esptool`

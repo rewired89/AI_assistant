@@ -1,0 +1,28 @@
+id: habit_formation_001
+topic: habits_and_behavior_change
+title: How habits become automatic
+hook: Is there a magic number of days after which a new habit just happens by itself?
+researcher: Phillippa Lally and colleagues
+publication_year: 2010
+source_title: 'How are habits formed: Modelling habit formation in the real world'
+source_url: https://doi.org/10.1002/ejsp.674
+evidence_type: original_study
+summary: They followed 96 volunteers for 84 days. Each person picked one small daily behavior and rated how automatic it felt each day. Automaticity generally rose with repetition, but the time it took to level off varied a lot, from about 18 days to a modeled estimate of 254. Missing a single day did not seem to derail the process.
+limitations: It was a small group, they chose their own behaviors, and they rated their own automaticity. You may have heard a popular number of days, but it comes from only some of the participants and it is not a rule.
+everyday_example: Filling a water bottle every morning might feel automatic in a few weeks, while a more complicated routine can take much longer, and both are normal.
+reflection_question: What is one small thing you could repeat until it takes less effort to start?
+optional_exercise: Choose one tiny action, link it to something you already do every day, and just notice how it feels after a couple of weeks.
+estimated_duration_seconds: 86
+sensitive_topic: false
+keywords:
+- habit
+- routine
+- consistency
+- repeat
+- days
+verification:
+  status: verified
+  checked_on: '2026-10-12'
+  checked_by: Claude (web search, abstract level)
+  basis: 'Citation (Eur J Soc Psychol 40(6), 998-1009, doi 10.1002/ejsp.674), 96 volunteers, 18-254 day range, missing one opportunity not materially affecting formation: confirmed via abstract-based sources. Study length reported as 84 days; some sources differ.'
+  owner_confirmed: false

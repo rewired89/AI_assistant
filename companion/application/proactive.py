@@ -36,11 +36,13 @@ class DirectorConfig:
 class ProactiveDirector:
     def __init__(self, behavior: BehaviorEngine, conversation: ConversationEngine, pipeline: VoicePipeline,
                  clock: Callable[[], float], memory=None, state_store=None, config: DirectorConfig | None = None,
-                 rng: random.Random | None = None, psychology=None):
+                 rng: random.Random | None = None, psychology=None, insights=None):
         self.behavior, self.conversation, self.pipeline, self.clock = behavior, conversation, pipeline, clock
         self.memory, self.state_store, self.cfg = memory, state_store, config or DirectorConfig()
         self.rng = rng or random.Random()
         self.psychology = psychology
+        self.insights = insights                            # DailyInsights (optional)
+        self._insight: tuple | None = None                   # (Script, spoken?) being spoken right now
         self._queued_followups: set[str] = set()
         self.stats: Counter = Counter()
         self.asleep = False
@@ -106,6 +108,7 @@ class ProactiveDirector:
             self._last_idle = now
             self._handle(self.behavior.react("idle_tick", memory_refs=self._memory_refs(now)), now)
         self._queue_followups(now)
+        self._deliver_insight(now)
         self._speak_pending(now)
         if self.state_store is not None and (saw_interaction or now - self._last_save >= self.cfg.save_interval_s):
             self.state_store.save(self.behavior.state)
@@ -158,6 +161,23 @@ class ProactiveDirector:
         if (self._composing is None and self._pending and not self.asleep and self.pipeline.state is State.IDLE):
             _, intent, style = self._pending.popleft()
             self._composing = (self._pool.submit(self.conversation.compose_intent, intent), intent, style)
+
+    def _deliver_insight(self, now: float) -> None:
+        """One scheduled psychology discovery a day, only when nothing else is happening. Never retried within the day
+        if it could not start (she is mid-conversation): the next idle moment inside the window tries again; after the
+        window the day is simply skipped."""
+        ins = self.insights
+        if ins is None or self.asleep or self._composing is not None or self._pending or self.pipeline.state is not State.IDLE:
+            return
+        script = ins.prepare(now)
+        if script is None:
+            return
+        if ins.mode == "text":
+            ins.commit(script, now, spoken=False)
+            self.stats["insight_text"] += 1
+        elif self.pipeline.speak(script.text, "normal"):
+            ins.commit(script, now, spoken=True)
+            self.stats["insight_spoken"] += 1
 
     def _queue_followups(self, now: float) -> None:
         """Reminders she asked for (content-free). Spoken even in quiet mode, but never while asleep or busy."""

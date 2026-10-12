@@ -21,7 +21,7 @@ D = 86400
 
 class World:
     def __init__(self, rig, clock, llm=None, memory=None, proactive="frequent", name="Sam", state_store=None,
-                 curiosity=0.95, playfulness=0.3, psychology=None, safety=None, **dcfg):
+                 curiosity=0.95, playfulness=0.3, psychology=None, safety=None, insights=None, **dcfg):
         self.clock = clock
         self.r = rig(responder=ScriptedResponder([Reply("Okay.")]))
         self.beh = self.r.pipe.engine
@@ -32,10 +32,10 @@ class World:
         self.conv = ConversationEngine(self.llm, lambda: cfg, self.beh.state, clock, memory=memory,
                                        user_name=lambda: name,
                                        dialogue=LinePicker(load_templates(SP / "ninetales"), random.Random(2)),
-                                       safety=safety, psychology=psychology)
+                                       safety=safety, psychology=psychology, insights=insights)
         self.r.pipe.responder = self.conv
         self.d = ProactiveDirector(self.beh, self.conv, self.r.pipe, clock, memory=memory, state_store=state_store,
-                                   config=DirectorConfig(**dcfg), rng=random.Random(3), psychology=psychology)
+                                   config=DirectorConfig(**dcfg), rng=random.Random(3), psychology=psychology, insights=insights)
         self.device = self.r.device
 
     def drive(self, seconds, stop=None, coarse=20.0, fine=0.05):
@@ -337,3 +337,55 @@ def test_compose_never_raises_and_remembers_what_it_said(world):
     r2 = w.conv.compose_intent(Intent("play_invite", tone="not-a-style", grounding=["playfulness_high"]))
     assert r1.text and r1.style == "excited" and r2.text and r2.style == "normal"
     assert w.conv.history[-1]["role"] == "assistant"
+
+
+# ------------------------------------------------------------------ daily psychology discoveries
+def _insights(tmp_path, clock, mode="voice"):
+    from datetime import datetime as _dt
+    from companion.discoveries import DailyInsights, load_dir
+    entries, _ = load_dir("content/discoveries")
+    ins = DailyInsights(tmp_path / "i.json", entries, clock, rng=random.Random(1))
+    ins.enabled, ins.mode = True, mode
+    h = _dt.fromtimestamp(clock.t, timezone.utc)
+    ins.time_hm = (h.hour, h.minute)
+    return ins
+
+
+def test_scheduled_discovery_is_spoken_once_a_day_and_only_when_idle(world, tmp_path, clock):
+    ins = _insights(tmp_path, clock)
+    w = world(proactive="never", insights=ins)
+    assert w.drive(600, stop=lambda: w.d.stats["insight_spoken"] >= 1)
+    w.settle()
+    assert "psychology discovery" in spoken(w.r)
+    assert w.device.capture is None                              # speaking only, the mic stays closed
+    w.drive(6 * 3600)
+    assert w.d.stats["insight_spoken"] == 1                      # no second one, no reminder
+    assert w.llm.calls == []                                     # the claims come from the library, not a model
+
+
+def test_discovery_waits_while_she_is_talking_and_is_spoken_after(world, tmp_path, clock):
+    ins = _insights(tmp_path, clock)
+    w = world(proactive="never", insights=ins)
+    w.r.press()
+    w.r.run(lambda: w.r.pipe.state is State.LISTENING)
+    w.drive(2)
+    assert w.r.pipe.state is State.LISTENING
+    assert w.d.stats["insight_spoken"] == 0 and ins.last_scheduled_day is None   # not started, so not counted as delivered
+    assert w.drive(120, stop=lambda: w.d.stats["insight_spoken"] >= 1)           # once she is done, still inside the window
+
+
+def test_text_mode_goes_to_the_inbox_without_speaking(world, tmp_path, clock):
+    ins = _insights(tmp_path, clock, mode="text")
+    w = world(proactive="never", insights=ins)
+    assert w.drive(600, stop=lambda: w.d.stats["insight_text"] >= 1)
+    assert ins.inbox and w.d.stats["spoken"] == 0 and w.device.playback is None
+
+
+def test_voice_commands_reach_the_insights_before_the_model(world, tmp_path, clock):
+    from companion.discoveries import DailyInsights, load_dir
+    ins = DailyInsights(tmp_path / "i.json", load_dir("content/discoveries")[0], clock, rng=random.Random(1))
+    w = world(proactive="never", insights=ins)
+    r = w.conv.respond("please turn on daily insights")
+    assert "real research" in r.text and ins.enabled and w.llm.calls == []
+    r = w.conv.respond("tell me a psychology discovery")
+    assert "psychology discovery" in r.text and w.llm.calls == []

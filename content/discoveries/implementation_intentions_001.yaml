@@ -1,0 +1,28 @@
+id: implementation_intentions_001
+topic: habits_and_behavior_change
+title: Goals versus plans
+hook: Why can wanting to do something and actually starting it feel like two different steps?
+researcher: Peter Gollwitzer
+publication_year: 1999
+source_title: 'Implementation intentions: Strong effects of simple plans'
+source_url: https://doi.org/10.1037/0003-066X.54.7.493
+evidence_type: research_review
+summary: 'He described what he called implementation intentions: simple if-then plans that link a specific situation to a specific action. His proposal was that deciding the situation ahead of time hands the starting signal to the situation itself, so you do not have to remember or decide in the moment.'
+limitations: That paper is a review that lays out the idea and the evidence up to 1999. It does not say a plan works for everyone or for every goal, and how big the effects are is a question for later research reviews.
+everyday_example: It is the difference between 'I want to read more' and 'After I brush my teeth tonight, I will read two pages.'
+reflection_question: Is there something you genuinely want that might get easier if you decided exactly when and how to begin?
+optional_exercise: 'Pick one small thing and finish this sentence: ''When ___ happens, I will ___.'' There is nothing to report back.'
+estimated_duration_seconds: 82
+sensitive_topic: false
+keywords:
+- habit
+- plan
+- goal
+- routine
+- start
+verification:
+  status: verified
+  checked_on: '2026-10-12'
+  checked_by: Claude (web search, abstract level)
+  basis: Citation (American Psychologist 54(7), 493-503, doi 10.1037/0003-066X.54.7.493) confirmed on university repositories; description limited to the abstract. Effect sizes deliberately not stated.
+  owner_confirmed: false

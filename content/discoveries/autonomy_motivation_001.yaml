@@ -1,0 +1,28 @@
+id: autonomy_motivation_001
+topic: openness_to_learning
+title: Choice and motivation
+hook: Have you noticed that advice can feel less appealing when it sounds like an order?
+researcher: Richard Ryan and Edward Deci
+publication_year: 2000
+source_title: Self-determination theory and the facilitation of intrinsic motivation, social development, and well-being
+source_url: https://pubmed.ncbi.nlm.nih.gov/11392867/
+evidence_type: theory
+summary: 'They described self-determination theory, which proposes three basic psychological needs: competence, autonomy, and relatedness. When the surrounding conditions support those needs, people tend to be more self-motivated, and when the needs are thwarted, motivation and well-being tend to suffer.'
+limitations: This is a broad theory about tendencies across many people, not one experiment. It does not say that advice is bad or that guidance should be rejected. It says the way a choice is set up can matter.
+everyday_example: A plan you chose for your own reasons often feels different from the same plan handed to you as a rule.
+reflection_question: When you want to improve something, what would a plan look like if it were built around your own reasons and values?
+optional_exercise: Write down one thing you are working on and one reason for it that is entirely yours.
+estimated_duration_seconds: 78
+sensitive_topic: false
+keywords:
+- motivation
+- choice
+- autonomy
+- advice
+- values
+verification:
+  status: verified
+  checked_on: '2026-10-12'
+  checked_by: Claude (web search, abstract level)
+  basis: Citation (American Psychologist 55(1), 68-78, PubMed 11392867) and the three-needs claim confirmed from the PubMed abstract.
+  owner_confirmed: false
