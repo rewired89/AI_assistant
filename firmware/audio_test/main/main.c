@@ -57,7 +57,7 @@ static void audio_init(i2c_master_bus_handle_t bus)
 
     i2c_cfg.addr = ES7210_CODEC_DEFAULT_ADDR;
     const audio_codec_ctrl_if_t *in_ctrl = audio_codec_new_i2c_ctrl(&i2c_cfg);
-    es7210_codec_cfg_t e7 = {.ctrl_if = in_ctrl, .mic_selected = ES7120_SEL_MIC1 | ES7120_SEL_MIC2 | ES7120_SEL_MIC3 | ES7120_SEL_MIC4};
+    es7210_codec_cfg_t e7 = {.ctrl_if = in_ctrl, .mic_selected = ES7210_SEL_MIC1 | ES7210_SEL_MIC2 | ES7210_SEL_MIC3 | ES7210_SEL_MIC4};
     const audio_codec_if_t *in_codec = es7210_codec_new(&e7);
     dc.dev_type = ESP_CODEC_DEV_TYPE_IN;
     dc.codec_if = in_codec;
