@@ -1,5 +1,8 @@
 # Hardware (board not yet received)
 
+## CONFIRMED FROM PHOTOS (owner's unit, label on the back of the enclosure; printed text, not measured)
+Waveshare ESP32-S3-Touch-LCD-1.54 in a white enclosure. Label: display ST7789 240x240, touch CST816, mic ADC ES7210 (AEC) with 2 mics, codec ES8311, speaker, QMI8658 6-axis IMU, 8 MB PSRAM, 16 MB flash, microSD slot, USB-C. Three side buttons labelled +/KEY, PWR, BOOT/-. Pin map, charger and battery: still UNVERIFIED (need the Waveshare wiki/schematic).
+
 ## Candidate board: ESP32-S3-Touch-LCD-1.54 (VENDOR CLAIMS, UNVERIFIED)
 Taken from the listing text. Nothing here is measured. No GPIOs, battery capacity or current draw are known.
 
