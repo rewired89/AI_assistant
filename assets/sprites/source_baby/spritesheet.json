@@ -1,0 +1,45 @@
+{
+  "character": {
+    "id": "0df99c22-ce6e-4f89-88ea-9bfeddfaeabd",
+    "name": "Idle",
+    "prompt": "A cute magical creature egg for a cozy pixel-art virtual pet game. A small, round, slightly oval egg with a smooth creamy ivory shell, soft golden-orange markings, tiny pastel pink star-shaped speckles, and a subtle teal heart symbol on the front. A faint warm golden glow surrounds the egg, suggesting a magical fox spirit is growing inside. A few tiny golden sparkles float nearby. Adorable, gentle, dreamy atmosphere. Clean 2D pixel art, crisp pixel clusters, dark pixel outlines, limited pastel color palette, simple shading, centered full object, transparent background. Front-facing view, no perspective rotation, no character outside the egg, no text, no scenery. Designed for a tiny virtual pet screen, readable at 32\u00d732 to 64\u00d764 pixels.",
+    "size": {
+      "width": 48,
+      "height": 48
+    },
+    "directions": 8,
+    "view": "low top-down"
+  },
+  "spritesheet": {
+    "path": "A_cute_magical_creature-Idle.png",
+    "cell_size": {
+      "width": 48,
+      "height": 48
+    },
+    "sheet_size": {
+      "width": 384,
+      "height": 48
+    },
+    "columns": 8,
+    "pivot": "cell-center",
+    "rows": [
+      {
+        "row": 0,
+        "type": "rotations",
+        "frame_count": 8,
+        "directions": [
+          "south",
+          "south-east",
+          "east",
+          "north-east",
+          "north",
+          "north-west",
+          "west",
+          "south-west"
+        ]
+      }
+    ]
+  },
+  "export_version": "1.0",
+  "export_date": "2026-10-12T03:26:43.747318+00:00"
+}

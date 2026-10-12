@@ -83,3 +83,5 @@
 | `docs/` | architecture, decisions, hardware (unknowns), boundary, protocol, security, privacy, psychology-design, roadmap |
 | `tests/` | pytest suites: protocol, firmware (simulated), companion |
 | `firmware/`, `assets/`, `companion/{speech,conversation,psychology}` | Empty placeholders (.gitkeep) |
+
+- `assets/sprites/{egg,baby}.json` + `source_egg|source_baby/`: stage sprite sets; `tools/desk_view.py` `ViewServer.sprite_doc(stage)` / `STAGE_FILES` picks one. `docs/your-checklist.md`: mic test and board arrival steps.

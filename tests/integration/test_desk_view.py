@@ -129,3 +129,17 @@ def test_a_damaged_saved_file_falls_back_to_the_starter_set(view, tmp_path):
     (tmp_path / "s").mkdir()
     (tmp_path / "s" / "default.json").write_text("{broken")
     sp.validate(json.loads(req(v, "/api/sprites")[1]))
+
+
+def test_stage_sprites_served_by_stage(tmp_path):
+    from companion import sprites_default as sd, sprites as sp
+    main, egg = tmp_path / "default.json", tmp_path / "egg.json"
+    base = sd.make()
+    sp.save(main, base)
+    other = sd.make()
+    other["palette"][1] = "#123456" if len(other["palette"]) > 1 else other["palette"][0]
+    sp.save(egg, other)
+    v = ViewServer(lambda: {}, lambda c, x: None, sprites_path=main)
+    assert v.sprite_doc("EGG") == sp.load(egg)
+    assert v.sprite_doc("BABY") == sp.load(main)          # no baby.json: falls back to the main set
+    assert v.sprite_doc(None) == sp.load(main)

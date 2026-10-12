@@ -14,6 +14,7 @@ is known: the editor lets you set them and the preview follows."""
 from __future__ import annotations
 
 import json
+from urllib.parse import parse_qs, urlsplit
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -38,8 +39,13 @@ class ViewServer:
         self.url = ""
 
     # ---- sprite files -------------------------------------------------------------------------
-    def sprite_doc(self) -> dict:
+    STAGE_FILES = {"EGG": "egg.json", "BABY": "baby.json"}    # other stages use the main set until their art exists
+
+    def sprite_doc(self, stage: str | None = None) -> dict:
         try:
+            name = self.STAGE_FILES.get(stage or "")
+            if name and (self.sprites_path.parent / name).is_file():
+                return sp.load(self.sprites_path.parent / name)
             return sp.load(self.sprites_path)
         except sp.SpriteError:
             return sprites_default.make()                      # nothing saved yet (or the file is damaged): the starter set
@@ -111,7 +117,8 @@ class ViewServer:
                     except Exception:
                         return self._json(500, {"error": "state unavailable"})
                 if path == "/api/sprites":
-                    return self._json(200, server.sprite_doc())
+                    q = parse_qs(urlsplit(self.path).query).get("stage", [""])[0].upper()[:24]
+                    return self._json(200, server.sprite_doc(q or None))
                 if path == "/favicon.ico":
                     return self._send(204, b"", "image/x-icon")
                 if path == "/api/sprites/default":
@@ -277,9 +284,9 @@ function render(){if(!st.anim)return;const sprites=useSprites&&doc;$('sp').style
  $('mode').textContent='Showing: '+(sprites?'sprites':'vector face');$('mode').setAttribute('aria-pressed',String(!!sprites));
  sprites?showSprite(st.anim):showVector(st.anim,st.speaking)}
 setInterval(()=>{talk++;render()},100);
-async function loadDoc(){try{const r=await fetch('/api/sprites');doc=await r.json()}catch(e){doc=null}}
+async function loadDoc(){try{const r=await fetch('/api/sprites?stage='+encodeURIComponent(st.stage||''));doc=await r.json()}catch(e){doc=null}}
 async function poll(){try{const r=await fetch('/api/state');st=await r.json();
- if(st.rev!==rev){rev=st.rev;await loadDoc()}
+ if(st.rev!==rev||st.stage!==stg){rev=st.rev;stg=st.stage;await loadDoc()}
  $('s_state').textContent='she is: '+st.pipe;$('s_anim').textContent=st.anim;$('s_pow').textContent=st.power;$('s_bat').textContent='battery '+st.battery+'%';
  $('s_mic').textContent=st.mic?'mic ON':'mic MUTED';$('s_stage').textContent='stage '+st.stage;$('cap').textContent=st.caption||'';
  $('micstat').textContent=(st.mic_status&&st.mic_status!=='ok')?'MICROPHONE PROBLEM: '+st.mic_status:'';$('lvl').style.width=Math.min(100,(st.level||0)/80)+'%';$('thr').style.left=Math.min(100,(st.threshold||0)/80)+'%';
@@ -291,7 +298,7 @@ $('talk').onclick=()=>send('press');$('mute').onclick=()=>send('mute');$('wake')
 $('mode').onclick=()=>{useSprites=!useSprites;try{localStorage.setItem('nt_mode',useSprites?'sprites':'vector')}catch(e){}};
 $('bat').oninput=e=>{$('batv').textContent=e.target.value;send('battery',+e.target.value)};
 addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.code==='Space'){e.preventDefault();send('press')}if(e.key==='m')send('mute')});
-drawTails(1);loadDoc();poll();
+let stg=null;drawTails(1);loadDoc();poll();
 </script></body></html>"""
 
 EDITOR = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
