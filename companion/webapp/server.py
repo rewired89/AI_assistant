@@ -278,7 +278,7 @@ class WebApp:
 
             def _body(self):
                 try:
-                    n = int(self.headers.get("Content-Length", "-1"))
+                    n = int(self.headers.get("Content-Length") or 0)       # browsers send no length for a DELETE without a body
                 except ValueError:
                     n = -1
                 if not 0 <= n <= MAX_BODY:

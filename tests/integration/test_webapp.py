@@ -327,3 +327,27 @@ def test_served_over_tls_marks_the_cookie_secure(tmp_path):
 def test_the_phone_app_script_is_valid_javascript():
     assert subprocess.run(["node", "--check", str(STATIC / "app.js")], capture_output=True).returncode == 0
     assert subprocess.run(["node", "--check", str(STATIC / "sw.js")], capture_output=True).returncode == 0
+
+
+def test_a_browser_style_delete_with_no_body_works(env):
+    """Regression: a browser sends DELETE with no Content-Length; the server used to answer 400, so nothing could be deleted."""
+    import http.client
+    app, store, auth, journal, _ = env
+    c = login(app, auth)
+    note = c.call("POST", "/api/notes", {"body": "to delete"})[1]
+    lst = c.call("POST", "/api/lists", {"name": "L", "items": ["x"]})[1]
+
+    def raw(method, path):
+        conn = http.client.HTTPConnection("localhost", app.port)
+        conn.putrequest(method, path, skip_host=True)
+        conn.putheader("Host", c.host)
+        conn.putheader("X-NT-App", "1")
+        conn.putheader("Cookie", c.cookie)
+        conn.endheaders()                                                      # no body, no Content-Length
+        r = conn.getresponse()
+        r.read()
+        return r.status
+    assert raw("DELETE", f"/api/notes/{note['id']}") == 200 and store.get_note(note["id"]) is None
+    assert raw("DELETE", f"/api/items/{lst['items'][0]['id']}") == 200
+    assert raw("DELETE", f"/api/lists/{lst['id']}") == 200
+    assert raw("DELETE", "/api/journal/j1abc") == 200
