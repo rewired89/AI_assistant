@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import array
 import re
+from pathlib import Path
 import shutil
 import struct
 import subprocess
@@ -98,6 +99,68 @@ class WhisperRecognizer(SpeechRecognizer):
         if looks_degenerate(text, seconds):
             return ""
         return text
+
+
+# Kokoro (neural voice, Apache-2.0 weights, female voices af_*). It speaks at 24 kHz; the pipeline wants 16 kHz.
+KOKORO_MODEL = "kokoro-v1.0.onnx"             # full-precision: ~5x faster than the int8 file on CPUs without VNNI (measured)
+KOKORO_MODEL_SMALL = "kokoro-v1.0.int8.onnx"
+KOKORO_VOICES = "voices-v1.0.bin"
+KOKORO_SPEED = {"normal": 1.0, "happy": 1.06, "excited": 1.12, "sleepy": 0.86, "sad": 0.9, "surprised": 1.05,
+                "affectionate": 0.95, "calm": 0.94, "whisper": 0.9}
+FEMALE_VOICES = ("af_heart", "af_sarah", "af_bella", "af_nicole", "af_sky", "af_nova", "af_jessica", "af_river",
+                 "af_alloy", "af_aoede", "af_kore", "bf_emma", "bf_isabella", "bf_alice", "bf_lily")
+
+
+def _resample_np(x, src: int, dst: int):
+    import numpy as np
+    if src == dst:
+        return x
+    n_out = int(len(x) * dst / src)
+    return np.interp(np.arange(n_out) * (src / dst), np.arange(len(x)), x).astype(np.float32)
+
+
+class KokoroSynthesizer(SpeechSynthesizer):
+    """Natural-sounding offline voice. `model_dir` holds kokoro-v1.0.onnx (or the slower-on-most-CPUs int8 file) and voices-v1.0.bin (see
+    `python -m tools.fetch_models kokoro`). Needs `pip install kokoro-onnx`. Slower than espeak: measure with
+    `python -m tools.bench_tts` on the machine that will run it. Licenses: weights Apache-2.0, kokoro-onnx MIT; its
+    phonemizer loads espeak-ng (GPLv3) as a library, fine for a personal build, check before selling hardware."""
+
+    def __init__(self, model_dir: str, voice: str = "af_heart", lang: str = "en-us", loader=None):
+        d = Path(model_dir)
+        if loader is None:
+            try:
+                from kokoro_onnx import Kokoro
+            except ImportError as e:
+                raise EngineError("kokoro-onnx is not installed: pip install kokoro-onnx") from e
+            loader = lambda m, v: Kokoro(m, v)  # noqa: E731
+        model = d / KOKORO_MODEL if (d / KOKORO_MODEL).exists() or loader is not None else d / KOKORO_MODEL_SMALL
+        if not model.exists() and loader is None and (d / KOKORO_MODEL_SMALL).exists():
+            model = d / KOKORO_MODEL_SMALL
+        try:
+            self._k = loader(str(model), str(d / KOKORO_VOICES))
+        except Exception as e:
+            raise EngineError(f"could not load the Kokoro voice from {model_dir!r} (python -m tools.fetch_models kokoro): "
+                              f"{type(e).__name__}") from None
+        voices = set(self._k.get_voices()) if hasattr(self._k, "get_voices") else {voice}
+        if voice not in voices:
+            raise EngineError(f"unknown voice {voice!r}")
+        self.voice, self.lang = voice, lang
+
+    def synthesize(self, text: str, style: str = "normal", speed: float = 1.0) -> bytes:
+        import numpy as np
+        text = "".join(ch for ch in text if ch.isprintable() or ch in "\n ").strip()[:MAX_TEXT_CHARS]
+        if not text:
+            raise EngineError("nothing to say")
+        sp = KOKORO_SPEED.get(style, 1.0) * max(0.5, min(speed, 2.0))
+        try:
+            audio, rate = self._k.create(text, voice=self.voice, speed=max(0.6, min(sp, 1.5)), lang=self.lang)
+        except Exception as e:
+            raise EngineError(f"speech synthesis failed: {type(e).__name__}") from None
+        audio = np.asarray(audio, dtype=np.float32).reshape(-1)
+        if audio.size == 0 or not np.isfinite(audio).all():
+            raise EngineError("speech synthesis failed")
+        audio = _resample_np(audio, int(rate), SAMPLE_RATE)
+        return (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
 
 
 # style -> (espeak pitch 0-99, words per minute, amplitude 0-200). Rough hand-tuned guesses, not measured.

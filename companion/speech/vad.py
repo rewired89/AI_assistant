@@ -1,8 +1,10 @@
 """Energy-based end-of-speech detection for push-to-talk captures (PCM16 LE, 16 kHz mono).
 
-Deliberately simple. The threshold is a guess until it is calibrated against the real microphone
-(noise floor, gain and AGC are unknown), so it is configuration, not a constant of nature.
-"""
+Deliberately simple. `threshold` is the floor for "this is speech"; on top of it the detector learns the room: the
+quietest 10% of the windows heard so far in this capture approximate the background noise, and speech must be 3x
+louder than that (capped), so a hot microphone or a TV no longer keeps "silence" from ever being detected (the
+fixed 500 threshold made one real laptop mic listen until the 15 s limit). Still a guess until calibrated on the
+real hardware microphone."""
 from __future__ import annotations
 
 import math
@@ -10,6 +12,7 @@ import struct
 
 SAMPLE_RATE = 16000
 WINDOW_SAMPLES = 320  # 20 ms
+MAX_ADAPTIVE_THRESHOLD = 6000.0
 
 
 def rms(pcm: bytes) -> float:
@@ -27,19 +30,32 @@ class EndpointDetector:
         self.trailing_s = 0.0
         self.has_speech = False
         self._carry = b""
+        self._levels: list[float] = []
+        self.noise_floor = 0.0
 
     def feed(self, pcm: bytes) -> None:
         data = self._carry + pcm
         step = WINDOW_SAMPLES * 2
         usable = len(data) // step * step
         for i in range(0, usable, step):
-            if rms(data[i:i + step]) >= self.threshold:
+            level = rms(data[i:i + step])
+            self._levels.append(level)
+            if len(self._levels) >= 15:                        # 0.3 s of audio heard
+                quiet = sorted(self._levels)[len(self._levels) // 10]
+                # Only trust it as "noise" when something clearly louder has also been heard; if everything so far is
+                # about equally loud we cannot tell noise from speech and stay on the fixed threshold.
+                self.noise_floor = quiet if quiet * 2.5 <= max(self._levels) else 0.0
+            if level >= self.current_threshold:
                 self.speech_s += WINDOW_SAMPLES / SAMPLE_RATE
                 self.trailing_s = 0.0
                 self.has_speech = True
             elif self.has_speech:
                 self.trailing_s += WINDOW_SAMPLES / SAMPLE_RATE
         self._carry = data[usable:]
+
+    @property
+    def current_threshold(self) -> float:
+        return max(self.threshold, min(3.0 * self.noise_floor, MAX_ADAPTIVE_THRESHOLD))
 
     @property
     def enough_speech(self) -> bool:

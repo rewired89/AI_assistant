@@ -105,13 +105,15 @@ class AppConfig:
             raise ConfigProblem(f"unknown timezone {self.timezone!r}") from None
         if not 0 < self.port < 65536:
             raise ConfigProblem("listen.port out of range")
-        for name, sec, allowed in (("stt", self.stt, {"engine", "model", "language"}), ("tts", self.tts, {"engine", "voice"}),
+        for name, sec, allowed in (("stt", self.stt, {"engine", "model", "language"}), ("tts", self.tts, {"engine", "voice", "model", "speed"}),
                                    ("llm", self.llm, {"engine", "model", "url", "allow_remote"}),
                                    ("memory", self.memory, {"encrypt", "passphrase_env"})):
             if set(sec) - allowed:
                 raise ConfigProblem(f"{name}: unknown settings {sorted(set(sec) - allowed)}")
-        if self.stt.get("engine", "none") not in ("none", "whisper") or self.tts.get("engine", "none") not in ("none", "espeak"):
-            raise ConfigProblem("stt.engine is none|whisper, tts.engine is none|espeak")
+        if self.stt.get("engine", "none") not in ("none", "whisper") or self.tts.get("engine", "none") not in ("none", "espeak", "kokoro"):
+            raise ConfigProblem("stt.engine is none|whisper, tts.engine is none|espeak|kokoro")
+        if self.tts.get("engine") == "kokoro" and not self.tts.get("model"):
+            raise ConfigProblem("tts.model must point at the folder from: python -m tools.fetch_models kokoro")
         if self.stt.get("engine") == "whisper" and not self.stt.get("model"):
             raise ConfigProblem("stt.model must point at a downloaded model folder")
         if self.llm.get("engine", "none") not in ("none", "ollama"):
@@ -214,6 +216,9 @@ class Companion:
         return _NoEars()
 
     def _make_tts(self) -> SpeechSynthesizer:
+        if self.cfg.tts.get("engine") == "kokoro":
+            from .speech.engines import KokoroSynthesizer
+            return KokoroSynthesizer(self.cfg.tts["model"], voice=self.cfg.tts.get("voice", "af_heart"))
         if self.cfg.tts.get("engine") == "espeak":
             from .speech.engines import EspeakSynthesizer
             return EspeakSynthesizer(voice=self.cfg.tts.get("voice", "en-us"))

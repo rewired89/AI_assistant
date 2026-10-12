@@ -45,6 +45,8 @@
 | `tools/bench_stt.py` | Benchmark local Whisper: load time, real-time factor, memory, transcript |
 | `tools/check_llm.py`, `tests/companion/test_check_llm.py` | Check a remote Ollama server: reachable, model present, answer time |
 | `tools/desk_robot.py`, `tests/integration/test_desk_robot.py` | Simulated robot wired to laptop mic/speaker; init + run the whole companion by voice |
+| `tools/desk_view.py`, `tests/integration/test_desk_view.py` | Face window (original art) for the desk robot: local web page, Origin-checked WebSocket |
+| `tools/bench_tts.py` | Time a TTS voice and save a WAV to listen to |
 | `tools/fetch_models.py` | One-time Whisper model download |
 | `tests/companion/test_speech_engines.py` | Engine adapters: stubbed process/model, real espeak through the pipeline |
 | `companion/memory/crypto.py` | `FieldCipher`: AES-GCM field encryption + HMAC key index (scrypt/HKDF) |

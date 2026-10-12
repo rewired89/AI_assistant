@@ -134,6 +134,7 @@ class VoicePipeline:
         self.cfg = config or PipelineConfig()
         self.state = State.IDLE
         self.stats: Counter = Counter()
+        self.notes_total = 0                  # how many notes were ever written (the deque forgets old ones)
         self.log: deque = deque(maxlen=200)   # (state, note) only; never content
         self._presses = 0
         self._device_sleeping = False
@@ -192,6 +193,7 @@ class VoicePipeline:
 
     def _note(self, note: str) -> None:
         self.log.append((self.state.value, note))
+        self.notes_total += 1
 
     def _set(self, state: State) -> None:
         self.state, self._t_state = state, self.clock()

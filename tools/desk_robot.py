@@ -28,6 +28,7 @@ from companion.application.ws_transport import client_ssl_context
 from companion.security import SecretStore
 from simulator import SimulatedDevice, Storage
 from simulator.ws_link import DeviceLink
+from tools.desk_view import ViewServer
 from tools.gen_certs import generate
 
 DEVICE_ID = "desk-robot"
@@ -66,7 +67,8 @@ class AplaySpeaker:
         self.p.terminate()
 
 
-def init(dir_: Path, llm_url: str, llm_model: str, stt_model: str | None, port: int = 8443, species: str = "ninetales") -> Path:
+def init(dir_: Path, llm_url: str, llm_model: str, stt_model: str | None, port: int = 8443, species: str = "ninetales",
+         tts_model: str | None = None, voice: str = "af_heart") -> Path:
     dir_.mkdir(parents=True, exist_ok=True)
     cfg_path = dir_ / "companion.yaml"
     if cfg_path.exists():
@@ -80,14 +82,15 @@ def init(dir_: Path, llm_url: str, llm_model: str, stt_model: str | None, port: 
            "tls": {"cert": str(pki["server_cert"].resolve()), "key": str(pki["server_key"].resolve())},
            "listen": {"host": "127.0.0.1", "port": port},
            "stt": {"engine": "whisper", "model": str(Path(stt_model).resolve())} if stt_model else {"engine": "none"},
-           "tts": {"engine": "espeak"}, "llm": {"engine": "ollama", "url": llm_url, "model": llm_model},
+           "tts": ({"engine": "kokoro", "model": str(Path(tts_model).resolve()), "voice": voice} if tts_model
+                   else {"engine": "espeak"}), "llm": {"engine": "ollama", "url": llm_url, "model": llm_model},
            "memory": {"encrypt": False}}
     cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
     return cfg_path
 
 
 def run(dir_: Path, mic=None, speaker=None, keys: "queue.Queue[str] | None" = None, stop: threading.Event | None = None,
-        out=print, **companion_kwargs) -> int:
+        out=print, view_port: int | None = 8765, **companion_kwargs) -> int:
     dir_ = Path(dir_)
     cfg = AppConfig.load(dir_ / "companion.yaml")
     clock = SystemClock()
@@ -114,13 +117,45 @@ def run(dir_: Path, mic=None, speaker=None, keys: "queue.Queue[str] | None" = No
             if dev.capture is not None:                      # the mic only matters while the device has it open
                 link.call(lambda c=chunk: dev.feed_mic(c))
 
+    def snapshot() -> dict:
+        pipe = app.pipeline
+        caption = ""
+        sp = getattr(pipe, "_speech", None)
+        if pipe.state.value == "speaking" and sp:
+            item = sp["sentences"][min(sp["i"], len(sp["sentences"]) - 1)]
+            caption = item if isinstance(item, str) else ""
+        if not link.connected:
+            anim = "offline"
+        elif dev.power.value == "SLEEPING":
+            anim = "sleeping"
+        else:
+            anim = dev.animation["name"] if dev.animation else "idle"
+        return {"anim": anim, "power": dev.power.value, "battery": dev.battery, "mic": bool(dev.state["config"]["mic_enabled"]),
+                "pipe": pipe.state.value, "stage": app.state.stage, "caption": caption,
+                "speaking": pipe.state.value == "speaking", "notes": [n for _, n in list(pipe.log)[-5:]]}
+
+    def command(cmd: str, arg) -> None:
+        if cmd == "press":
+            link.inject(lambda: dev.press_button("single"))
+        elif cmd == "mute":
+            link.inject(lambda: dev.press_button("long"))
+        elif cmd == "wake":
+            link.inject(lambda: dev.press_button("double"))
+        elif cmd == "battery":
+            link.inject(lambda: dev.set_battery(int(arg)))
+
+    view = ViewServer(snapshot, command, port=view_port) if view_port is not None else None
     threads = [host, threading.Thread(target=pump_mic, name="mic", daemon=True)]
     for t in threads:
         t.start()
     link.start()
+    if view:
+        out(f"Her face: open {view.start()} in your browser (SPACE there = the button).")
     out("Desk robot is up. ENTER = button, m = mute toggle, q = quit.")
+    seen = 0
     try:
         while not stop.is_set():
+            seen = _print_new_notes(app.pipeline, seen, out)
             try:
                 k = keys.get(timeout=0.1)
             except queue.Empty:
@@ -134,6 +169,8 @@ def run(dir_: Path, mic=None, speaker=None, keys: "queue.Queue[str] | None" = No
                 link.inject(lambda: dev.press_button("single"))
     finally:
         stop.set()
+        if view:
+            view.stop()
         link.stop()
         for t in threads:
             t.join(5)
@@ -142,6 +179,16 @@ def run(dir_: Path, mic=None, speaker=None, keys: "queue.Queue[str] | None" = No
         if own_spk:
             speaker.close()
     return 0
+
+
+def _print_new_notes(pipe, seen: int, out) -> int:
+    """Shows what she is doing (state names only, never what was said) so a silent robot can be diagnosed."""
+    total = pipe.notes_total
+    if total > seen:
+        items = list(pipe.log)
+        for st, note in items[-min(total - seen, len(items)):]:
+            out(f"  [{st}] {note}")
+    return total
 
 
 def _stdin_keys(q: "queue.Queue[str]") -> None:
@@ -159,17 +206,20 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--llm-model", required=True)
     i.add_argument("--stt-model")
     i.add_argument("--species", default="ninetales")
+    i.add_argument("--tts-model", help="folder from tools.fetch_models kokoro (natural voice); omit for robotic espeak")
+    i.add_argument("--voice", default="af_heart")
     r = sub.add_parser("run")
     r.add_argument("--dir", default="dev")
+    r.add_argument("--view-port", type=int, default=8765, help="0 = pick a free port, -1 = no face window")
     a = ap.parse_args(argv)
     try:
         if a.cmd == "init":
-            p = init(Path(a.dir), a.llm_url, a.llm_model, a.stt_model, species=a.species)
+            p = init(Path(a.dir), a.llm_url, a.llm_model, a.stt_model, species=a.species, tts_model=a.tts_model, voice=a.voice)
             print(f"created {p}. Next: python -m tools.desk_robot run --dir {a.dir}")
             return 0
         q: "queue.Queue[str]" = queue.Queue()
         threading.Thread(target=_stdin_keys, args=(q,), daemon=True).start()
-        return run(Path(a.dir), keys=q)
+        return run(Path(a.dir), keys=q, view_port=None if a.view_port < 0 else a.view_port)
     except (ConfigProblem, FileExistsError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

@@ -16,7 +16,7 @@ sudo apt install -y alsa-utils espeak-ng
 python -m tools.desk_robot init --dir dev --llm-url http://192.168.1.42:11434 --llm-model llama3.2:3b --stt-model models/whisper-base.en
 python -m tools.desk_robot run --dir dev
 ```
-She speaks first (the onboarding questions). ENTER = the button (listen, talk, stop talking). `m` + ENTER toggles the mic mute, `q` quits. `dev/` holds keys and her conversations' data, is git-ignored, and must not be shared. Tested with fake audio devices and fake engines only; a real mic and speaker run is the point of trying it.
+She speaks first (the onboarding questions). Open the printed address (http://localhost:8765) to see her face react, the sentence she is saying, her power/battery/mic state, and buttons (Talk, Mute, Wake, battery slider). The terminal also prints state names ("[listening] listen_end:silence") so a silent robot can be diagnosed; it never prints what was said. For the natural voice add `--tts-model models/kokoro --voice af_heart` to `init` after `python -m tools.fetch_models kokoro` and `pip install -e ".[tts]"`. ENTER = the button (listen, talk, stop talking). `m` + ENTER toggles the mic mute, `q` quits. `dev/` holds keys and her conversations' data, is git-ignored, and must not be shared. Tested with fake audio devices and fake engines only; a real mic and speaker run is the point of trying it.
 
 ## What is wired
 Secret store + TLS wss server (device dials in) -> device client -> onboarding (answers change the live personality) -> safety gate -> psychology engine (private vault) -> conversation engine -> voice pipeline (STT/TTS) -> proactive director. Memory and vault open encrypted when `memory.encrypt: true`.

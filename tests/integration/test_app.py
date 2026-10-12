@@ -83,7 +83,8 @@ def test_config_is_validated_before_anything_starts(home):
     for change, msg in [({"surprise": 1}, "unknown settings"), ({"species": "nope"}, "unknown species"),
                         ({"timezone": "Mars/Base"}, "timezone"), ({"stt": {"engine": "whisper"}}, "stt.model"),
                         ({"memory": {"encrypt": True}}, "passphrase_env"), ({"llm": {"engine": "x"}}, "llm.engine"),
-                        ({"tts": {"engine": "espeak", "volume": 3}}, "unknown settings")]:
+                        ({"tts": {"engine": "espeak", "volume": 3}}, "unknown settings"),
+                        ({"tts": {"engine": "kokoro"}}, "tts.model"), ({"tts": {"engine": "piper"}}, "tts.engine")]:
         p.write_text(yaml.safe_dump({**base, **change}))
         with pytest.raises(ConfigProblem, match=msg):
             AppConfig.load(p)

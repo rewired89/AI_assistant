@@ -15,7 +15,9 @@ stt:
   engine: whisper             # none | whisper (needs: pip install -e ".[stt]" and python -m tools.fetch_models)
   model: ../models/whisper-base.en   # measured on a Ryzen 5 3500U: base.en RTF 0.2, small.en RTF 1.2 (too slow)
 tts:
-  engine: espeak              # none | espeak (needs espeak-ng installed)
+  engine: kokoro              # none | espeak (robotic, light) | kokoro (natural, needs: pip install -e ".[tts]" and tools.fetch_models kokoro)
+  model: ../models/kokoro
+  voice: af_heart             # female voices: af_heart af_sarah af_bella af_nicole af_sky af_nova (US), bf_emma bf_isabella (UK)
 llm:
   engine: ollama              # none | ollama (home-network addresses only unless allow_remote: true)
   url: http://192.168.1.50:11434   # the Minisforum's address; Ollama does NOT run on the laptop

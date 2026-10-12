@@ -208,3 +208,78 @@ def test_whisper_local_files_only_is_set_when_using_the_real_library(monkeypatch
     monkeypatch.setattr(fw, "WhisperModel", Spy)
     WhisperRecognizer("models/x")
     assert seen["local_files_only"] is True
+
+
+# ---------------------------------------------------------------- kokoro adapter (stub model, plus a real run when available)
+class StubKokoro:
+    def __init__(self, voices=("af_heart", "af_sarah"), rate=24000):
+        self.voices, self.rate, self.calls = list(voices), rate, []
+
+    def get_voices(self):
+        return self.voices
+
+    def create(self, text, voice, speed, lang):
+        import numpy as np
+        self.calls.append((text, voice, speed, lang))
+        n = int(self.rate * 0.5)
+        return (0.3 * np.sin(2 * np.pi * 220 * np.arange(n) / self.rate)).astype("float32"), self.rate
+
+
+def kokoro(tmp_path, **kw):
+    from companion.speech.engines import KokoroSynthesizer
+    stub = StubKokoro()
+    return KokoroSynthesizer(str(tmp_path), loader=lambda m, v: stub, **kw), stub
+
+
+def test_kokoro_output_is_16k_pcm16_and_the_right_length(tmp_path):
+    k, stub = kokoro(tmp_path)
+    pcm = k.synthesize("Hello there.")
+    assert len(pcm) % 2 == 0 and abs(len(pcm) / 32000 - 0.5) < 0.01 and 3000 < rms(pcm) < 8000
+
+
+def test_kokoro_style_changes_speed_within_bounds_and_voice_is_kept(tmp_path):
+    k, stub = kokoro(tmp_path, voice="af_sarah")
+    k.synthesize("a", "sleepy"); k.synthesize("a", "excited", 99); k.synthesize("a", "nonsense", 0.0001)
+    speeds = [c[2] for c in stub.calls]
+    assert speeds[0] < 1.0 < speeds[1] and all(0.6 <= s <= 1.5 for s in speeds)
+    assert {c[1] for c in stub.calls} == {"af_sarah"}
+
+
+@pytest.mark.parametrize("bad", ["", "  ", "\x00"])
+def test_kokoro_refuses_empty_text(tmp_path, bad):
+    with pytest.raises(EngineError):
+        kokoro(tmp_path)[0].synthesize(bad)
+
+
+def test_kokoro_unknown_voice_and_load_failure_are_clear(tmp_path):
+    from companion.speech.engines import KokoroSynthesizer
+    with pytest.raises(EngineError, match="unknown voice"):
+        KokoroSynthesizer(str(tmp_path), voice="zz_nope", loader=lambda m, v: StubKokoro())
+
+    def boom(m, v):
+        raise OSError("/secret/path missing")
+    with pytest.raises(EngineError) as e:
+        KokoroSynthesizer(str(tmp_path), loader=boom)
+    assert "/secret" not in str(e.value) and "fetch_models" in str(e.value)
+
+
+def test_kokoro_engine_failures_do_not_leak_details(tmp_path):
+    k, stub = kokoro(tmp_path)
+    stub.create = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("/secret internal"))
+    with pytest.raises(EngineError) as e:
+        k.synthesize("hi")
+    assert "/secret" not in str(e.value)
+
+
+def test_default_voice_is_female():
+    from companion.speech.engines import FEMALE_VOICES
+    assert FEMALE_VOICES[0] == "af_heart" and all(v[1] == "f" for v in FEMALE_VOICES)
+
+
+@pytest.mark.skipif(not __import__("os").environ.get("NT_KOKORO_DIR"), reason="set NT_KOKORO_DIR to a downloaded Kokoro folder")
+def test_real_kokoro_speaks():
+    import os
+    from companion.speech.engines import KokoroSynthesizer
+    k = KokoroSynthesizer(os.environ["NT_KOKORO_DIR"])
+    pcm = k.synthesize("Hello, I am Kit.")
+    assert 0.8 < len(pcm) / 32000 < 6 and rms(pcm) > 500

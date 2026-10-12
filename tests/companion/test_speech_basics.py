@@ -67,3 +67,46 @@ def test_species_lines_override_and_validate(tmp_path):
     bad.write_text("lines:\n  made_up: hello\n")
     with pytest.raises(ValueError):
         load_lines(tmp_path)
+
+
+# ---------------------------------------------------------------- adaptive endpointing (hot mic / noisy room)
+def _noise(level, seconds, seed=1):
+    import random
+    import struct
+    r = random.Random(seed)
+    n = int(seconds * 16000)
+    return struct.pack(f"<{n}h", *(int(r.gauss(0, level)) for _ in range(n)))
+
+
+def test_endpoint_works_in_a_noisy_room_where_a_fixed_threshold_never_ends():
+    from companion.speech.vad import EndpointDetector
+    from companion.speech.fakes import tone
+    det = EndpointDetector()                                  # base threshold 500
+    det.feed(_noise(1500, 0.6))                               # TV / hot mic: constant noise far above 500
+    for _ in range(3):
+        det.feed(tone(0.3, 300, 20000))                       # she talks, much louder than the noise
+    det.feed(_noise(1500, 1.4))                               # she stops; the noise stays
+    assert det.enough_speech and det.endpoint
+    fixed = EndpointDetector(threshold=500.0)
+    fixed.noise_floor = 0.0
+    assert det.current_threshold > 1500                       # learned the room
+
+
+def test_endpoint_still_hears_quiet_speech_in_a_quiet_room():
+    from companion.speech.vad import EndpointDetector
+    from companion.speech.fakes import tone
+    det = EndpointDetector()
+    det.feed(_noise(50, 0.5))
+    det.feed(tone(0.8, 300, 4000))
+    det.feed(_noise(50, 1.3))
+    assert det.endpoint and det.current_threshold == 500.0
+
+
+def test_continuous_talking_is_not_mistaken_for_noise():
+    from companion.speech.vad import EndpointDetector
+    from companion.speech.fakes import tone, silence
+    det = EndpointDetector()
+    for _ in range(6):
+        det.feed(tone(0.35, 300, 9000))
+        det.feed(silence(0.08))                               # tiny gaps between words
+    assert det.has_speech and det.speech_s > 1.5 and not det.endpoint
