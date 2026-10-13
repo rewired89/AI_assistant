@@ -11,3 +11,7 @@ bool face_known(const char *name);            // is this one of the protocol ani
 bool face_play(const char *name, bool loop, int priority, const char *cmd_id);
 bool face_stop(void);                         // false if nothing was playing
 void face_set_backlight(int percent);     // clamped to 0..30 by the firmware; the host cannot raise it
+
+// Sprites: the face can draw the owner's pixel art instead of the built-in shapes. They live in the `sprites` flash partition
+// (written once with tools/sprite_bundle.py). Without that partition, or for a missing animation, the built-in face is used.
+bool face_set_sprites(const char *set);       // "egg", "baby" or "adult"; false if that set is not in flash

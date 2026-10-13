@@ -122,3 +122,11 @@ def test_deploy_set_tts_switches_to_kokoro_and_touches_nothing_else(tmp_path):
     empty = tmp_path / "e"
     empty.mkdir()
     assert main(["set-tts", "--config", str(cfg), "--model", str(empty)]) == 1
+
+
+def test_sprite_bundle_roundtrips_and_fits_the_partition():
+    from tools import sprite_bundle
+    data = sprite_bundle.build(sprite_bundle.ROOT / "assets" / "sprites")
+    assert len(data) <= sprite_bundle.PARTITION_SIZE
+    names = [line.split(":")[0] for line in sprite_bundle.check(data)]
+    assert names == ["egg", "baby", "adult"]

@@ -513,3 +513,13 @@ def test_bedtime_can_be_switched_off(world):
     w.beh.settings.quiet_hours = (0, 24)
     w.drive(2000)
     assert w.d.stats["bedtime_requested"] == 0 and w.device.power is not P.SLEEPING
+
+
+def test_device_is_told_which_sprite_set_matches_her_stage(world):
+    w = world(llm=FakeLanguageModel(["Okay."] * 5), proactive="never")
+    w.beh.state.stage = "BABY"
+    w.drive(60)
+    assert w.d._sprite_sent == "baby" and w.device.state["config"].get("sprite_set") == "baby"
+    w.beh.state.stage = "YOUNG"
+    w.drive(60)
+    assert w.device.state["config"].get("sprite_set") == "adult"

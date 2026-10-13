@@ -64,6 +64,7 @@ class ProactiveDirector:
         self._used: dict[str, float] = {}
         self._last_idle = self._last_save = self._last_activity = clock()
         self._last_bedtime_try = -1e18
+        self._sprite_sent: str | None = None            # which sprite set the device was last told to show
         self._battery = "ok"
         self._last_anim: str | None = None
         pipeline.client.add_listener(self._on_event)
@@ -75,6 +76,8 @@ class ProactiveDirector:
     # ---- inputs ------------------------------------------------------------------------
     def _on_event(self, msg: dict) -> None:
         t, p = msg["type"], msg["payload"]
+        if t == "device.ready":
+            self._sprite_sent = None                         # a freshly booted device has forgotten its sprite set
         if t in ("button.pressed", "touch.detected", "power.woke"):
             self._last_activity = self.clock()
         if t == "power.sleeping":
@@ -121,6 +124,7 @@ class ProactiveDirector:
         if (not self.asleep and self.pipeline.state is State.IDLE and now - self._last_idle >= self.cfg.idle_tick_s):
             self._last_idle = now
             self._handle(self.behavior.react("idle_tick", memory_refs=self._memory_refs(now)), now)
+        self._sync_sprite_set()
         self._bedtime(now)
         self._queue_followups(now)
         self._deliver_reminders(now)
@@ -130,6 +134,19 @@ class ProactiveDirector:
         if self.state_store is not None and (saw_interaction or now - self._last_save >= self.cfg.save_interval_s):
             self.state_store.save(self.behavior.state)
             self._last_save = now
+
+    SPRITE_SETS = {"EGG": "egg", "BABY": "baby"}            # every later stage uses the adult set
+
+    def _sync_sprite_set(self) -> None:
+        want = self.SPRITE_SETS.get(self.behavior.state.stage, "adult")
+        if want == self._sprite_sent or self.asleep:
+            return
+        try:
+            self.pipeline.client.request("device.set_config", {"config": {"sprite_set": want}}, timeout_s=2.0, until="accepted")
+            self._sprite_sent = want
+        except Exception:
+            self._sprite_sent = want if self.stats["sprite_failed"] >= 3 else None   # a firmware without sprites: stop retrying
+            self.stats["sprite_failed"] += 1
 
     def _bedtime(self, now: float) -> None:
         """Late at night, once she has been left alone for a while, ask the device to sleep until quiet hours end.

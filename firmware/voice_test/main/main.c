@@ -125,7 +125,7 @@ static void send_signed(esp_websocket_client_handle_t c, const char *type, const
 
 static void send_hello(esp_websocket_client_handle_t c)
 {
-    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.5\",\"protocol_versions\":[1],\"recovered_state\":false}");
+    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.6\",\"protocol_versions\":[1],\"recovered_state\":false}");
 }
 
 // ---- incoming: verify first, act second. Anything that fails a check is dropped silently (counted, never answered).
@@ -656,6 +656,28 @@ static void cmd_power_wake(const char *mid, cJSON *p)
     exit_sleep("host_request");
     reply_completed(mid);
 }
+
+static void cmd_device_set_config(const char *mid, cJSON *p)
+{
+    cJSON *cfg = cJSON_GetObjectItem(p, "config"), *it;
+    if (!cJSON_IsObject(cfg) || !cfg->child) { reply_failed(mid, "invalid_payload", "bad device.set_config payload"); return; }
+    cJSON_ArrayForEach(it, cfg) {            // validate everything first, apply only if all of it is acceptable
+        const char *k = it->string ? it->string : "";
+        bool ok = (!strcmp(k, "volume") && int_in(it, 0, 100)) || (!strcmp(k, "default_brightness") && int_in(it, 0, 100)) ||
+                  (!strcmp(k, "idle_sleep_seconds") && int_in(it, 30, 86400)) || (!strcmp(k, "mic_enabled") && cJSON_IsFalse(it)) ||
+                  (!strcmp(k, "sprite_set") && cJSON_IsString(it) && (!strcmp(it->valuestring, "egg") || !strcmp(it->valuestring, "baby") || !strcmp(it->valuestring, "adult")));
+        if (!ok) { reply_failed(mid, "invalid_payload", "unknown or bad config value"); return; }
+    }
+    reply_accepted(mid, "device.set_config");
+    cJSON_ArrayForEach(it, cfg) {
+        const char *k = it->string;
+        if (!strcmp(k, "mic_enabled")) g_mic_enabled = false;          // the host may only mute
+        else if (!strcmp(k, "default_brightness") && !g_sleeping) face_set_backlight(it->valueint * 30 / 100);   // the firmware's own cap still applies
+        else if (!strcmp(k, "sprite_set") && !face_set_sprites(it->valuestring)) { reply_failed(mid, "unsupported_command", "that sprite set is not in flash"); return; }
+        // volume arrives with each audio.play; idle_sleep_seconds is accepted but not used yet
+    }
+    reply_completed(mid);
+}
 static bool touch_down(void)
 {
     uint8_t reg = 0x01, d[6] = {0};
@@ -743,6 +765,7 @@ static void on_host_text(esp_websocket_client_handle_t c, const char *txt, int n
     else if (strcmp(t, "audio.stop_capture") == 0) cmd_audio_stop_capture(m, payload);
     else if (strcmp(t, "power.sleep") == 0) cmd_power_sleep(m, payload);
     else if (strcmp(t, "power.wake") == 0) cmd_power_wake(m, payload);
+    else if (strcmp(t, "device.set_config") == 0) cmd_device_set_config(m, payload);
     else if (strcmp(t, "animation.play") == 0) cmd_animation_play(m, payload);
     else if (strcmp(t, "animation.stop") == 0) cmd_animation_stop(m);
     else reply_failed(m, "unsupported_command", "not implemented in this test firmware");

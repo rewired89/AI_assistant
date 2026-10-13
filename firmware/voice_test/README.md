@@ -10,3 +10,10 @@ python -m tools.fw_config --bundle deploy/ninetails-01.bundle.json --project fir
 idf.py build && idf.py -p /dev/ttyACM0 flash monitor
 ```
 Not compiled or run by the author when written.
+
+## Sprites (her pixel art on the screen)
+The 3 sprite sets (egg, baby, adult) are packed into one file and written to the `sprites` flash partition (0x310000, 1 MiB). The firmware itself does not contain them, so flashing new firmware does not erase them, and updating the art does not need a rebuild.
+```powershell
+python -m tools.sprite_bundle
+```
+That writes `build/sprites.bin` and prints the flash command, to run in the ESP-IDF bash terminal (`python -m esptool --chip esp32s3 -p /dev/ttyACM0 write_flash 0x310000 build/sprites.bin`). The host tells the device which set to show (egg, baby or adult) from her growth stage. Without the sprites in flash the built-in eyes face is used. Flashing the new partition table (`idf.py flash`) is needed once because `partitions.csv` changed. Screen pixel colors are UNVERIFIED on the real panel.

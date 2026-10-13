@@ -57,6 +57,7 @@
         "volume":{"type":"integer","minimum":0,"maximum":100},
         "default_brightness":{"type":"integer","minimum":0,"maximum":100},
         "idle_sleep_seconds":{"type":"integer","minimum":30,"maximum":86400},
+        "sprite_set":{"enum":["egg","baby","adult"]},
         "mic_enabled":{"const":false,"description":"Host may only mute. Unmuting requires a physical action."}}}}}
   },
   "events": {

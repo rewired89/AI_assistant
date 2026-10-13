@@ -9,6 +9,7 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
+#include "esp_partition.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -125,6 +126,136 @@ static void draw(const frame_t *f)
     }
 }
 
+
+// ---------------------------------------------------------------- sprites (NTSB bundle of NTSP sets, memory-mapped from flash)
+#define MAX_SETS 3
+#define MAX_ANIMS 32
+#define SPRITE_SCALE 4
+typedef struct { char name[24]; uint8_t loop, nframes; const uint8_t *frames; } sanim_t;
+typedef struct {
+    char name[9];
+    int w, h, ncol, nanim;
+    uint16_t pal[64];
+    bool opaque[64];
+    sanim_t anim[MAX_ANIMS];
+} sset_t;
+static sset_t g_sets[MAX_SETS];
+static int g_nsets;
+static volatile int g_active_set = -1;
+
+static bool parse_set(sset_t *s, const uint8_t *d, size_t size)
+{
+    if (size < 9 || memcmp(d, "NTSP", 4) != 0 || d[4] != 1) return false;
+    s->w = d[5]; s->h = d[6]; s->ncol = d[7]; s->nanim = 0;
+    int na = d[8];
+    if (s->w < 1 || s->h < 1 || s->ncol < 1 || s->ncol > 64) return false;
+    size_t p = 9;
+    if (p + (size_t)s->ncol * 4 > size) return false;
+    for (int i = 0; i < s->ncol; i++, p += 4) {
+        s->pal[i] = c565(d[p], d[p + 1], d[p + 2]);
+        s->opaque[i] = d[p + 3] >= 128;
+    }
+    size_t stride = 2 + (size_t)s->w * s->h;
+    for (int a = 0; a < na; a++) {
+        if (p >= size) return false;
+        int nl = d[p++];
+        if (p + nl + 2 > size) return false;
+        sanim_t tmp = {0};
+        if (nl < (int)sizeof tmp.name) { memcpy(tmp.name, d + p, nl); tmp.name[nl] = 0; }
+        p += nl;
+        tmp.loop = d[p]; tmp.nframes = d[p + 1]; p += 2;
+        tmp.frames = d + p;
+        if (p + (size_t)tmp.nframes * stride > size) return false;
+        p += (size_t)tmp.nframes * stride;
+        if (tmp.name[0] && tmp.nframes > 0 && s->nanim < MAX_ANIMS) s->anim[s->nanim++] = tmp;
+    }
+    return true;
+}
+
+static void sprites_load(void)
+{
+    const esp_partition_t *part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, (esp_partition_subtype_t)0x40, "sprites");
+    if (!part) { ESP_LOGW(TAG, "no sprites partition: built-in face only"); return; }
+    const void *ptr = NULL;
+    esp_partition_mmap_handle_t hnd;
+    if (esp_partition_mmap(part, 0, part->size, ESP_PARTITION_MMAP_DATA, &ptr, &hnd) != ESP_OK) { ESP_LOGW(TAG, "sprites partition not mappable"); return; }
+    const uint8_t *d = ptr;
+    if (memcmp(d, "NTSB", 4) != 0 || d[4] != 1) { ESP_LOGW(TAG, "sprites partition is empty (flash build/sprites.bin): built-in face only"); return; }
+    int n = d[5];
+    for (int i = 0; i < n && g_nsets < MAX_SETS; i++) {
+        const uint8_t *e = d + 6 + 16 * i;
+        uint32_t off, size;
+        memcpy(&off, e + 8, 4);
+        memcpy(&size, e + 12, 4);
+        if ((size_t)off + size > part->size) continue;
+        sset_t *s = &g_sets[g_nsets];
+        memset(s, 0, sizeof *s);
+        memcpy(s->name, e, 8);
+        s->name[8] = 0;
+        if (parse_set(s, d + off, size)) {
+            ESP_LOGI(TAG, "sprite set '%s': %dx%d, %d animations", s->name, s->w, s->h, s->nanim);
+            g_nsets++;
+        }
+    }
+}
+
+bool face_set_sprites(const char *set)
+{
+    for (int i = 0; set && i < g_nsets; i++)
+        if (strcmp(g_sets[i].name, set) == 0) { g_active_set = i; ESP_LOGI(TAG, "sprite set: %s", set); return true; }
+    return false;
+}
+
+static const sanim_t *sprite_anim(const sset_t *s, const char *name)
+{
+    for (int i = 0; i < s->nanim; i++) if (strcmp(s->anim[i].name, name) == 0) return &s->anim[i];
+    return NULL;
+}
+
+// which frame is showing t_ms after the animation started
+static int sprite_frame(const sset_t *s, const sanim_t *a, int t_ms)
+{
+    size_t stride = 2 + (size_t)s->w * s->h;
+    int total = 0;
+    for (int i = 0; i < a->nframes; i++) {
+        uint16_t ms;
+        memcpy(&ms, a->frames + i * stride, 2);
+        total += ms ? ms : 100;
+    }
+    if (total <= 0) return 0;
+    if (a->loop) t_ms %= total;
+    int acc = 0;
+    for (int i = 0; i < a->nframes; i++) {
+        uint16_t ms;
+        memcpy(&ms, a->frames + i * stride, 2);
+        acc += ms ? ms : 100;
+        if (t_ms < acc) return i;
+    }
+    return a->nframes - 1;
+}
+
+static void draw_sprite(const sset_t *s, const sanim_t *a, int frame)
+{
+    size_t stride = 2 + (size_t)s->w * s->h;
+    const uint8_t *px8 = a->frames + frame * stride + 2;
+    int sw = s->w * SPRITE_SCALE, sh = s->h * SPRITE_SCALE, ox = (W - sw) / 2, oy = (H - sh) / 2;
+    for (int y0 = 0; y0 < H; y0 += STRIP) {
+        for (int y = 0; y < STRIP; y++) {
+            int yy = y0 + y - oy;
+            for (int x = 0; x < W; x++) {
+                int xx = x - ox;
+                uint16_t col = 0;
+                if (yy >= 0 && yy < sh && xx >= 0 && xx < sw) {
+                    uint8_t idx = px8[(yy / SPRITE_SCALE) * s->w + (xx / SPRITE_SCALE)];
+                    if (idx < s->ncol && s->opaque[idx]) col = s->pal[idx];
+                }
+                g_buf[y * W + x] = col;
+            }
+        }
+        esp_lcd_panel_draw_bitmap(g_panel, 0, y0, W, y0 + STRIP, g_buf);
+    }
+}
+
 static void finish_cb(const char *name, const char *cmd, bool interrupted)
 {
     if (g_cb && cmd[0]) g_cb(name, cmd, interrupted);
@@ -149,6 +280,25 @@ static void face_task(void *arg)
         xSemaphoreGive(g_mu);
         if (done_cmd[0]) finish_cb(done_name, done_cmd, false);
 
+        static int last_look = -1;
+        static int64_t look_t0;
+        if (look != last_look) { last_look = look; look_t0 = now; }
+        int set = g_active_set;
+        const sanim_t *an = NULL;
+        if (set >= 0) {
+            an = sprite_anim(&g_sets[set], LOOKS[look].name);
+            if (!an) an = sprite_anim(&g_sets[set], "idle");   // this set has no art for that mood: show its idle
+        }
+        if (an) {
+            int frame = sprite_frame(&g_sets[set], an, (int)((now - look_t0) / 1000));
+            int skey = 1000000 + set * 100000 + (int)(an - g_sets[set].anim) * 100 + frame;
+            if (skey != last_key) {
+                draw_sprite(&g_sets[set], an, frame);
+                last_key = skey;
+            }
+            vTaskDelay(pdMS_TO_TICKS(40));
+            continue;
+        }
         int t_ms = (int)((now - start) / 1000);
         bool blink = (t_ms % 4200) < 140;
         int talk = (t_ms / 160) % 4;                            // 0..3 mouth opening cycle
@@ -186,6 +336,8 @@ bool face_init(face_finished_cb cb)
     ledc_channel_config_t c = {.gpio_num = NT_LCD_BL, .speed_mode = LEDC_LOW_SPEED_MODE, .channel = LEDC_CHANNEL_0, .timer_sel = LEDC_TIMER_0, .duty = (BACKLIGHT_PERCENT * 1023) / 100, .hpoint = 0};
     ledc_channel_config(&c);
     g_ok = true;
+    sprites_load();
+    face_set_sprites("adult");
     xTaskCreate(face_task, "face", 6144, NULL, 3, NULL);
     ESP_LOGI(TAG, "face ready");
     return true;
