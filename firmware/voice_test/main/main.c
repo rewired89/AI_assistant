@@ -213,6 +213,7 @@ static esp_websocket_client_handle_t g_ws;
 static SemaphoreHandle_t g_mu;
 static RingbufHandle_t g_ring;
 static volatile bool g_mic_enabled;   // muted at boot, always
+static bool g_mic_hw_ok;              // false if the microphone chip never answered at boot: the speaker keeps working
 
 static void audio_init(i2c_master_bus_handle_t bus)
 {
@@ -256,8 +257,17 @@ static void audio_init(i2c_master_bus_handle_t bus)
     ESP_ERROR_CHECK(esp_codec_dev_set_out_vol(out_dev, 0));  // silent until a verified audio.play
     fs.channel = 4;
     fs.channel_mask = ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0) | ESP_CODEC_DEV_MAKE_CHANNEL_MASK(1) | ESP_CODEC_DEV_MAKE_CHANNEL_MASK(2) | ESP_CODEC_DEV_MAKE_CHANNEL_MASK(3);
-    ESP_ERROR_CHECK(esp_codec_dev_open(in_dev, &fs));
-    ESP_ERROR_CHECK(esp_codec_dev_set_in_channel_gain(in_dev, fs.channel_mask, MIC_GAIN_DB));
+    // The microphone chip sometimes does not answer on the first try after a reset (seen once: I2C nack). Retry, and never let it take the speaker down.
+    for (int attempt = 1; attempt <= 6 && !g_mic_hw_ok; attempt++) {
+        if (esp_codec_dev_open(in_dev, &fs) == ESP_CODEC_DEV_OK) {
+            g_mic_hw_ok = esp_codec_dev_set_in_channel_gain(in_dev, fs.channel_mask, MIC_GAIN_DB) == ESP_CODEC_DEV_OK;
+        } else {
+            ESP_LOGW(TAG, "microphone chip did not start (attempt %d of 6)", attempt);
+            esp_codec_dev_close(in_dev);
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
+    }
+    if (!g_mic_hw_ok) ESP_LOGE(TAG, "microphone chip never answered: capture is disabled until the next reboot, playback still works");
 }
 
 // ======================= binary audio frames (protocol/audio.py) =======================
@@ -521,6 +531,7 @@ static void cmd_audio_start_capture(const char *mid, cJSON *p)
 {
     cJSON *cid = cJSON_GetObjectItem(p, "capture_id"), *sno = cJSON_GetObjectItem(p, "stream_no"), *ms = cJSON_GetObjectItem(p, "max_seconds");
     if (!ident_ok(cid) || !int_in(sno, 1, 65535) || !int_in(ms, 1, 30)) { reply_failed(mid, "invalid_payload", "bad audio.start_capture payload"); return; }
+    if (!g_mic_hw_ok) { reply_failed(mid, "internal", "microphone hardware did not start"); return; }
     if (!g_mic_enabled) { reply_failed(mid, "not_allowed", "microphone is muted"); return; }
     xSemaphoreTake(g_mu, portMAX_DELAY);
     if (cap.active) {
@@ -659,7 +670,7 @@ void app_main(void)
     for (;;) {
         bool plus = gpio_get_level(NT_BTN_PLUS) == 0, main_btn = gpio_get_level(NT_BTN_BOOT) == 0;
         if (plus && !prev_plus) {
-            g_mic_enabled = !g_mic_enabled;
+            g_mic_enabled = g_mic_hw_ok && !g_mic_enabled;
             ESP_LOGI(TAG, "MICROPHONE %s", g_mic_enabled ? "ON (unmuted by the button)" : "OFF (muted)");
         }
         if (main_btn && !prev_main) {   // BOOT/- is the push-to-talk button, named "main" in the protocol
