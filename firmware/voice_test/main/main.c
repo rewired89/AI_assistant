@@ -667,10 +667,12 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     switch (id) {
     case WEBSOCKET_EVENT_CONNECTED:
         ESP_LOGI(TAG, "wss CONNECTED: certificate check against our CA succeeded");
+        face_stop();   // drop the local offline face; the host sets the next one
         send_hello((esp_websocket_client_handle_t)arg);
         break;
     case WEBSOCKET_EVENT_DISCONNECTED:
         ESP_LOGW(TAG, "wss disconnected");
+        face_play("offline", true, 1, "");
         reset_audio_state();
         break;
     case WEBSOCKET_EVENT_DATA:
@@ -697,7 +699,7 @@ void app_main(void)
     i2c_master_bus_config_t ib = {.i2c_port = I2C_NUM_0, .sda_io_num = NT_I2C_SDA, .scl_io_num = NT_I2C_SCL, .clk_source = I2C_CLK_SRC_DEFAULT, .glitch_ignore_cnt = 7, .flags.enable_internal_pullup = true};
     ESP_ERROR_CHECK(i2c_new_master_bus(&ib, &bus));
     audio_init(bus);
-    face_init(anim_finished);   // screen failure is non-fatal: voice keeps working
+    if (face_init(anim_finished)) face_play("offline", true, 1, "");   // offline face until the host connects; screen failure is non-fatal
     gpio_config_t bc = {.mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE, .pin_bit_mask = (1ULL << NT_BTN_PLUS) | (1ULL << NT_BTN_BOOT)};
     ESP_ERROR_CHECK(gpio_config(&bc));
     xTaskCreate(playback_task, "playback", 6144, NULL, 6, NULL);
