@@ -9,6 +9,7 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
+#include "esp_attr.h"
 #include "esp_partition.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -56,12 +57,27 @@ static uint16_t *g_buf;
 static bool g_ok;
 static face_finished_cb g_cb;
 static SemaphoreHandle_t g_mu;
+static SemaphoreHandle_t g_done;   // given when the panel has finished reading the strip buffer (SPI DMA runs after draw_bitmap returns)
 // animation state, guarded by g_mu
 static int g_look = 0;                 // index into LOOKS
 static bool g_active, g_loop;
 static int g_prio;
 static char g_cmd[65];
 static int64_t g_ends_us;
+
+
+static bool IRAM_ATTR strip_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t *ev, void *ctx)
+{
+    BaseType_t woken = pdFALSE;
+    xSemaphoreGiveFromISR(g_done, &woken);
+    return woken == pdTRUE;
+}
+
+// Sends one strip and waits until the buffer may be reused. Without the wait the next strip overwrites data still being sent (horizontal glitch lines).
+static void push_strip(int y0)
+{
+    if (esp_lcd_panel_draw_bitmap(g_panel, 0, y0, W, y0 + STRIP, g_buf) == ESP_OK) xSemaphoreTake(g_done, pdMS_TO_TICKS(500));
+}
 
 static uint16_t c565(uint8_t r, uint8_t g, uint8_t b)
 {
@@ -122,7 +138,7 @@ static void draw(const frame_t *f)
     for (int y0 = 0; y0 < H; y0 += STRIP) {
         for (int y = 0; y < STRIP; y++)
             for (int x = 0; x < W; x++) g_buf[y * W + x] = px(f, x, y0 + y);
-        esp_lcd_panel_draw_bitmap(g_panel, 0, y0, W, y0 + STRIP, g_buf);
+        push_strip(y0);
     }
 }
 
@@ -252,7 +268,7 @@ static void draw_sprite(const sset_t *s, const sanim_t *a, int frame)
                 g_buf[y * W + x] = col;
             }
         }
-        esp_lcd_panel_draw_bitmap(g_panel, 0, y0, W, y0 + STRIP, g_buf);
+        push_strip(y0);
     }
 }
 
@@ -318,10 +334,11 @@ bool face_init(face_finished_cb cb)
 {
     g_cb = cb;
     g_mu = xSemaphoreCreateMutex();
+    g_done = xSemaphoreCreateBinary();
     spi_bus_config_t bus = {.sclk_io_num = NT_LCD_SCLK, .mosi_io_num = NT_LCD_MOSI, .miso_io_num = -1, .quadwp_io_num = -1, .quadhd_io_num = -1, .max_transfer_sz = W * STRIP * 2};
     if (spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO) != ESP_OK) { ESP_LOGE(TAG, "spi bus failed"); return false; }
     esp_lcd_panel_io_handle_t io = NULL;
-    esp_lcd_panel_io_spi_config_t io_cfg = {.cs_gpio_num = NT_LCD_CS, .dc_gpio_num = NT_LCD_DC, .spi_mode = 3, .pclk_hz = 40 * 1000 * 1000, .trans_queue_depth = 10, .lcd_cmd_bits = 8, .lcd_param_bits = 8};
+    esp_lcd_panel_io_spi_config_t io_cfg = {.cs_gpio_num = NT_LCD_CS, .dc_gpio_num = NT_LCD_DC, .spi_mode = 3, .pclk_hz = 40 * 1000 * 1000, .trans_queue_depth = 10, .lcd_cmd_bits = 8, .lcd_param_bits = 8, .on_color_trans_done = strip_done, .user_ctx = NULL};
     if (esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST, &io_cfg, &io) != ESP_OK) { ESP_LOGE(TAG, "panel io failed"); return false; }
     esp_lcd_panel_dev_config_t pc = {.reset_gpio_num = NT_LCD_RST, .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB, .bits_per_pixel = 16};
     if (esp_lcd_new_panel_st7789(io, &pc, &g_panel) != ESP_OK) { ESP_LOGE(TAG, "panel failed"); return false; }
