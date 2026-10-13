@@ -11,4 +11,10 @@ menu "Nine Tails network test"
     config NT_HOST_PORT
         int "Companion host port"
         default 8443
+    config NT_DEVICE_ID
+        string "Device id (from the provisioning bundle)"
+        default "ninetails-01"
+    config NT_DEVICE_KEY_HEX
+        string "Device key, 64 hex characters (SECRET, from the provisioning bundle, never committed)"
+        default ""
 endmenu

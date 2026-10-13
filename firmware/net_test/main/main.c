@@ -1,10 +1,14 @@
 // Network test: join Wi-Fi, sync the clock, open wss:// to the companion host and verify its certificate against OUR private CA (main/ca.pem).
 // The host closes the socket (code 4001/4003) if no valid signed first message arrives within 10 s: that close, after a successful handshake, is the expected result here.
 // Wi-Fi name and password come from `idf.py menuconfig` (kept in the local, git-ignored sdkconfig). Nothing here is a secret except those two values.
+#include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_random.h"
+#include "mbedtls/md.h"
 #include "esp_netif_sntp.h"
 #include "esp_websocket_client.h"
 #include "esp_wifi.h"
@@ -33,17 +37,66 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     }
 }
 
+// Signed first message (device.ready). Protocol v1: mac = HMAC-SHA256(key, canonical JSON of the message without auth.mac), canonical = sorted keys, no spaces.
+// The signing string below is written out with the keys already in sorted order, matching Python's json.dumps(sort_keys=True, separators=(",", ":")).
+static int hex_to_bytes(const char *hex, uint8_t *out, size_t n)
+{
+    if (strlen(hex) != n * 2) return -1;
+    for (size_t i = 0; i < n; i++) {
+        unsigned v;
+        if (sscanf(hex + 2 * i, "%2x", &v) != 1) return -1;
+        out[i] = (uint8_t)v;
+    }
+    return 0;
+}
+
+static void send_hello(esp_websocket_client_handle_t c)
+{
+    uint8_t key[32];
+    if (hex_to_bytes(CONFIG_NT_DEVICE_KEY_HEX, key, 32) != 0) {
+        ESP_LOGE(TAG, "device key missing or not 64 hex characters: run tools/fw_config.py or idf.py menuconfig");
+        return;
+    }
+    char nonce[25], mid[17];
+    snprintf(nonce, sizeof nonce, "%08x%08x%08x", (unsigned)esp_random(), (unsigned)esp_random(), (unsigned)esp_random());
+    snprintf(mid, sizeof mid, "hello%08x", (unsigned)esp_random());
+    long long ts = (long long)time(NULL);
+    char body[512];
+    const char *fmt_head = "{\"auth\":{\"kid\":1,%s\"nonce\":\"%s\",\"ts\":%lld},\"device_id\":\"%s\",\"message_id\":\"%s\",";
+    const char *fmt_tail = "\"payload\":{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-net-0.1\",\"protocol_versions\":[1],\"recovered_state\":false},\"protocol_version\":1,\"type\":\"device.ready\"}";
+    int n = snprintf(body, sizeof body, fmt_head, "", nonce, ts, CONFIG_NT_DEVICE_ID, mid);
+    n += snprintf(body + n, sizeof body - n, "%s", fmt_tail);
+    uint8_t mac[32];
+    if (mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 32, (const unsigned char *)body, n, mac) != 0) {
+        ESP_LOGE(TAG, "HMAC failed");
+        return;
+    }
+    char macx[65];
+    for (int i = 0; i < 32; i++) sprintf(macx + 2 * i, "%02x", mac[i]);
+    char out[640];
+    char mac_field[96];
+    snprintf(mac_field, sizeof mac_field, "\"mac\":\"%s\",", macx);   // the receiver ignores key order and rebuilds the canonical form itself
+    int m = snprintf(out, sizeof out, fmt_head, mac_field, nonce, ts, CONFIG_NT_DEVICE_ID, mid);
+    m += snprintf(out + m, sizeof out - m, "%s", fmt_tail);
+    int sent = esp_websocket_client_send_text(c, out, m, pdMS_TO_TICKS(5000));
+    ESP_LOGI(TAG, "sent signed device.ready (%d bytes, id %s)", sent, mid);
+}
+
 static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     esp_websocket_event_data_t *e = data;
     switch (id) {
     case WEBSOCKET_EVENT_CONNECTED:
         ESP_LOGI(TAG, "wss CONNECTED: TLS handshake and certificate check against our CA succeeded");
+        send_hello((esp_websocket_client_handle_t)arg);
         break;
     case WEBSOCKET_EVENT_DISCONNECTED:
         ESP_LOGW(TAG, "wss disconnected");
         break;
     case WEBSOCKET_EVENT_DATA:
+        if (e->op_code == 0x01 && e->data_len > 0) {
+            ESP_LOGI(TAG, "host sent: %.*s", e->data_len > 300 ? 300 : e->data_len, e->data_ptr);
+        }
         if (e->op_code == 0x08 && e->data_len >= 2) {
             int code = ((uint8_t)e->data_ptr[0] << 8) | (uint8_t)e->data_ptr[1];
             ESP_LOGI(TAG, "host closed the socket with code %d (4001/4003 = no signed first message, as expected in this test)", code);
@@ -94,7 +147,7 @@ void app_main(void)
     esp_websocket_client_config_t wsc = {.uri = uri, .cert_pem = ca_pem_start, .reconnect_timeout_ms = 5000, .network_timeout_ms = 10000};
     ESP_LOGI(TAG, "connecting to %s", uri);
     esp_websocket_client_handle_t c = esp_websocket_client_init(&wsc);
-    esp_websocket_register_events(c, WEBSOCKET_EVENT_ANY, ws_event, NULL);
+    esp_websocket_register_events(c, WEBSOCKET_EVENT_ANY, ws_event, (void *)c);
     ESP_ERROR_CHECK(esp_websocket_client_start(c));
     for (;;) vTaskDelay(pdMS_TO_TICKS(10000));
 }
