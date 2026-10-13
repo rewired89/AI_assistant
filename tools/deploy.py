@@ -89,6 +89,18 @@ def set_stt(config: Path, model: Path) -> None:
     config.write_text(yaml.safe_dump(cfg, sort_keys=False))
 
 
+def set_tts(config: Path, model: Path, voice: str = "af_heart") -> None:
+    """Switch the voice to Kokoro (natural female voices) in an existing companion.yaml. Changes nothing else."""
+    model = model.expanduser().resolve()
+    if not ((model / "kokoro-v1.0.onnx").is_file() and (model / "voices-v1.0.bin").is_file()):
+        raise ValueError(f"{model} does not hold the voice files (run: python -m tools.fetch_models kokoro --out models/kokoro)")
+    cfg = yaml.safe_load(config.read_text())
+    if not isinstance(cfg, dict):
+        raise ValueError(f"{config} is not a companion config")
+    cfg["tts"] = {"engine": "kokoro", "model": str(model), "voice": voice}
+    config.write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -105,7 +117,19 @@ def main(argv: list[str] | None = None) -> int:
     t = sub.add_parser("set-stt", help="switch her speech recognition (ears) on in an existing config")
     t.add_argument("--config", required=True)
     t.add_argument("--model", required=True, help="the folder made by `python -m tools.fetch_models whisper`")
+    v = sub.add_parser("set-tts", help="switch her voice to the natural female voice (Kokoro) in an existing config")
+    v.add_argument("--config", required=True)
+    v.add_argument("--model", required=True, help="the folder made by `python -m tools.fetch_models kokoro`")
+    v.add_argument("--voice", default="af_heart", help="af_heart (default), af_sarah, af_bella, af_nicole, af_sky, af_nova, bf_emma")
     a = ap.parse_args(argv)
+    if a.cmd == "set-tts":
+        try:
+            set_tts(Path(a.config), Path(a.model), a.voice)
+        except (ValueError, OSError, yaml.YAMLError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        print(f"Her voice is now {a.voice} (Kokoro) in {a.config}. Restart the companion for it to take effect.")
+        return 0
     if a.cmd == "set-stt":
         try:
             set_stt(Path(a.config), Path(a.model))

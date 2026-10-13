@@ -105,3 +105,20 @@ def test_deploy_set_stt_changes_only_the_stt_block(tmp_path):
     assert out["stt"] == {"engine": "whisper", "model": str(model.resolve())} and out["tts"] == {"engine": "espeak"} and out["species"] == "ninetales"
     with pytest.raises(ValueError):
         set_stt(cfg, tmp_path / "missing")
+
+
+def test_deploy_set_tts_switches_to_kokoro_and_touches_nothing_else(tmp_path):
+    import yaml
+    from tools.deploy import main
+    cfg = tmp_path / "companion.yaml"
+    cfg.write_text(yaml.safe_dump({"species": "ninetales", "stt": {"engine": "none"}, "tts": {"engine": "espeak"}}))
+    model = tmp_path / "k"
+    model.mkdir()
+    (model / "kokoro-v1.0.onnx").write_bytes(b"x")
+    (model / "voices-v1.0.bin").write_bytes(b"x")
+    assert main(["set-tts", "--config", str(cfg), "--model", str(model), "--voice", "af_sarah"]) == 0
+    out = yaml.safe_load(cfg.read_text())
+    assert out["tts"] == {"engine": "kokoro", "model": str(model.resolve()), "voice": "af_sarah"} and out["stt"] == {"engine": "none"}
+    empty = tmp_path / "e"
+    empty.mkdir()
+    assert main(["set-tts", "--config", str(cfg), "--model", str(empty)]) == 1
