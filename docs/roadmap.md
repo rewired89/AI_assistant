@@ -15,3 +15,13 @@
 - [ ] Phase 6 rest, 7 memory, 8 AI + voice, 9 psychology, 10 personality tuning, 11 art, 12 Cubone on same core
 
 Next concrete steps: (1) board arrives: fill `hardware.md`, dump flash; (2) WebSocket+TLS transport with the same tests; (3) tamagotchi state model with bounded decay and persistence tests; (4) memory store with consent and deletion.
+
+## After the board bring-up (next steps, in priority order)
+Status: buttons, screen, touch, sprites, sleep, speaker, mic, voice loop all ran on the real board with the owner. Still a desk rig, not a gift.
+1. **Where does the host live?** The robot dials the host over Wi-Fi. If she lives elsewhere, the robot cannot reach the Minisforum without a decision: (a) router port-forward + dynamic DNS (breaks under CGNAT), (b) a VPN (WireGuard on the board, or a relay), or (c) a small host at her home. Blocks everything below. OWNER DECISION NEEDED.
+2. **Wi-Fi setup without a computer.** Wi-Fi name/password and device key are compiled in. She needs a way to join her own Wi-Fi (setup hotspot or phone page), and the key must not sit unencrypted in flash (NVS/flash encryption UNVERIFIED).
+3. **Host as a service.** `tools.deploy init` writes a systemd unit that has never run on the real machine: auto-start, restart on crash, logs.
+4. **Reliability.** ES7210 mic sometimes starts quiet or NACKs (restart rather than retry), reconnect after Wi-Fi loss, watchdog.
+5. **Reply speed.** About 6 to 8 s now; target 3 s: speak the first sentence while the rest is written, smaller or quantized model, faster TTS.
+6. **Power.** No battery detected. Until verified, USB power only; never drive the battery gate (GPIO2) low.
+7. **Case/enclosure**, clinician review of psychology scripts, privacy review (her data lives on the owner's machine: consent and who can read it).
