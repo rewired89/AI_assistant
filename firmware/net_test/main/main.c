@@ -69,29 +69,42 @@ static void send_signed(esp_websocket_client_handle_t c, const char *type, const
     snprintf(nonce, sizeof nonce, "%08x%08x%08x", (unsigned)esp_random(), (unsigned)esp_random(), (unsigned)esp_random());
     snprintf(mid, sizeof mid, "%s%08x", id_prefix, (unsigned)esp_random());
     long long ts = (long long)time(NULL);
-    char body[768];
+    enum { BODY_MAX = 768, OUT_MAX = 900 };
+    char *body = malloc(BODY_MAX), *out = malloc(OUT_MAX);   // heap, not stack: this runs inside the websocket task
+    if (!body || !out) {
+        free(body);
+        free(out);
+        ESP_LOGE(TAG, "out of memory");
+        return;
+    }
     const char *fmt_head = "{\"auth\":{\"kid\":1,%s\"nonce\":\"%s\",\"ts\":%lld},\"device_id\":\"%s\",\"message_id\":\"%s\",\"payload\":";
     const char *fmt_tail = ",\"protocol_version\":1,\"type\":\"%s\"}";
-    int n = snprintf(body, sizeof body, fmt_head, "", nonce, ts, CONFIG_NT_DEVICE_ID, mid);
-    n += snprintf(body + n, sizeof body - n, "%s", payload_sorted);
-    n += snprintf(body + n, sizeof body - n, fmt_tail, type);
-    if (n >= (int)sizeof body) {
+    int n = snprintf(body, BODY_MAX, fmt_head, "", nonce, ts, CONFIG_NT_DEVICE_ID, mid);
+    n += snprintf(body + n, BODY_MAX - n, "%s", payload_sorted);
+    n += snprintf(body + n, BODY_MAX - n, fmt_tail, type);
+    if (n >= BODY_MAX) {
         ESP_LOGE(TAG, "message too long");
+        free(body);
+        free(out);
         return;
     }
     uint8_t mac[32];
     if (mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 32, (const unsigned char *)body, n, mac) != 0) {
         ESP_LOGE(TAG, "HMAC failed");
+        free(body);
+        free(out);
         return;
     }
-    char macx[65], mac_field[96], out[900];
+    char macx[65], mac_field[96];
     for (int i = 0; i < 32; i++) sprintf(macx + 2 * i, "%02x", mac[i]);
     snprintf(mac_field, sizeof mac_field, "\"mac\":\"%s\",", macx);   // the receiver rebuilds the canonical form itself, so key order here does not matter
-    int m = snprintf(out, sizeof out, fmt_head, mac_field, nonce, ts, CONFIG_NT_DEVICE_ID, mid);
-    m += snprintf(out + m, sizeof out - m, "%s", payload_sorted);
-    m += snprintf(out + m, sizeof out - m, fmt_tail, type);
+    int m = snprintf(out, OUT_MAX, fmt_head, mac_field, nonce, ts, CONFIG_NT_DEVICE_ID, mid);
+    m += snprintf(out + m, OUT_MAX - m, "%s", payload_sorted);
+    m += snprintf(out + m, OUT_MAX - m, fmt_tail, type);
     int sent = esp_websocket_client_send_text(c, out, m, pdMS_TO_TICKS(5000));
     ESP_LOGI(TAG, "sent signed %s (%d bytes)", type, sent);
+    free(body);
+    free(out);
 }
 
 static void send_hello(esp_websocket_client_handle_t c)
@@ -252,7 +265,7 @@ void app_main(void)
 
     char uri[64];
     snprintf(uri, sizeof(uri), "wss://%s:%d", CONFIG_NT_HOST_IP, CONFIG_NT_HOST_PORT);
-    esp_websocket_client_config_t wsc = {.uri = uri, .cert_pem = ca_pem_start, .reconnect_timeout_ms = 5000, .network_timeout_ms = 10000};
+    esp_websocket_client_config_t wsc = {.uri = uri, .cert_pem = ca_pem_start, .reconnect_timeout_ms = 5000, .network_timeout_ms = 10000, .task_stack = 10240, .buffer_size = 2048};
     ESP_LOGI(TAG, "connecting to %s", uri);
     esp_websocket_client_handle_t c = esp_websocket_client_init(&wsc);
     esp_websocket_register_events(c, WEBSOCKET_EVENT_ANY, ws_event, (void *)c);
