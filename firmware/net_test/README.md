@@ -15,3 +15,7 @@ Put the device id and key into the local, git-ignored sdkconfig WITHOUT typing t
 python -m tools.fw_config --bundle deploy/ninetails-01.bundle.json --project firmware/net_test
 ```
 The key is a secret. Never paste it in chat or commit it. Delete the bundle file after you have flashed.
+
+## If the board seems dead (no USB port)
+A crash loop can reboot faster than the PC can enumerate USB. Recover: unplug, hold BOOT/- (right button), plug in, hold 3 s, release. `lsusb | grep 303a` must show a device. Then flash anything known-good, or restore the factory image: `esptool --port /dev/ttyACM0 write-flash 0 factory_backup.bin`. App firmware cannot brick the ROM bootloader.
+The panic mode in sdkconfig.defaults is HALT (print the crash and stop) so a crash is readable instead of looping. An existing local sdkconfig keeps its old value: delete the `CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT` line and append `CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y`.
