@@ -207,3 +207,12 @@ def test_console_say_lines_go_through_the_speech_path(home):
         r.app.console_say.put("hello there")
         assert wait_for(lambda: said == ["hello there"], 5)
         assert wait_for(lambda: out and "speaking" in out[-1], 5)
+
+
+def test_console_verbose_prints_step_names_not_content(home):
+    with Running(home) as r:
+        out = []
+        r.app.console_out = out.append
+        r.app.console_verbose = True
+        r.app.pipeline._note("listen_start")
+        assert wait_for(lambda: any("listen_start" in line for line in out), 5)

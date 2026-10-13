@@ -259,6 +259,8 @@ class Companion:
         self._started = False
         self.console_say: queue.SimpleQueue = queue.SimpleQueue()      # dev console: text typed by the owner on the host to be spoken
         self.console_out = print
+        self.console_verbose = False                                   # dev console: also print the pipeline's step names (never what was said)
+        self._notes_seen = 0
 
     def _make_stt(self) -> SpeechRecognizer:
         if self.cfg.stt.get("engine") == "whisper":
@@ -299,8 +301,17 @@ class Companion:
             ok = self.pipeline.speak(text)
             self.console_out(f"[say] {'speaking' if ok else 'busy right now, try again in a moment'}")
 
+    def _console_notes(self) -> None:
+        total = self.pipeline.notes_total
+        new = min(total - self._notes_seen, len(self.pipeline.log))
+        for state, note in list(self.pipeline.log)[len(self.pipeline.log) - new:] if new > 0 else []:
+            self.console_out(f"[{state}] {note}")
+        self._notes_seen = total
+
     def step(self) -> None:
         self._drain_console()
+        if self.console_verbose:
+            self._console_notes()
         self.personality.cfg = self.onboarding.effective_config()      # onboarding answers take effect live
         self.adapter.observe(self.state.kind_counts)
         self.pipeline.poll()
@@ -345,6 +356,7 @@ def main(argv: list[str] | None = None) -> int:
     import sys
     ap = argparse.ArgumentParser(prog="companion")
     ap.add_argument("--config", required=True)
+    ap.add_argument("--show-heard", action="store_true", help="with --console: also print what the speech recognizer heard (testing with your OWN voice only)")
     ap.add_argument("--console", action="store_true", help="type `say some words` in this terminal to make the robot speak them (dev/testing only)")
     a = ap.parse_args(argv)
     try:
@@ -358,6 +370,9 @@ def main(argv: list[str] | None = None) -> int:
         signal.signal(signal.SIGTERM, lambda *_: stop.set())
     print(f"companion running on {app.cfg.host}:{app.cfg.port}; Ctrl+C to stop")
     if a.console:
+        app.console_verbose = True
+        if a.show_heard:
+            app.pipeline.on_heard = lambda text: print(f"[heard] {text!r}")
         def _console() -> None:
             print("console: type `say hello there` and press ENTER to hear it on the robot. Ctrl+C stops everything.")
             for line in sys.stdin:
