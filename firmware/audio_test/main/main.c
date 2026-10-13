@@ -21,7 +21,7 @@
 static const char *TAG = "nt_audio_test";
 #define RATE 16000
 #define OUT_VOLUME_MAX 90  // 0..100 in esp_codec_dev units (a dB scale: low values are inaudible); hard cap, never exceeded
-#define PLAYBACK_VOLUME 80
+#define PLAYBACK_VOLUME 90
 #define MIC_GAIN_DB 30.0
 #define REC_SECONDS 3
 #define REC_BYTES (RATE * REC_SECONDS * 2)
@@ -100,7 +100,7 @@ static void tone(void)
     if (!b) return;
     for (int i = 0; i < n; i++) {
         float env = i < 800 ? i / 800.0f : (i > n - 800 ? (n - i) / 800.0f : 1.0f);  // fade in and out, no clicks
-        b[i] = (int16_t)(6000 * env * sinf(2.0f * (float)M_PI * 440.0f * i / RATE));
+        b[i] = (int16_t)(16000 * env * sinf(2.0f * (float)M_PI * 440.0f * i / RATE));
     }
     const int steps[4] = {50, 65, 80, 90};  // quiet to louder; tell us at which step you first hear it
     for (int k = 0; k < 4; k++) {
