@@ -25,3 +25,11 @@ Status: buttons, screen, touch, sprites, sleep, speaker, mic, voice loop all ran
 5. **Reply speed.** About 6 to 8 s now; target 3 s: speak the first sentence while the rest is written, smaller or quantized model, faster TTS.
 6. **Power.** No battery detected. Until verified, USB power only; never drive the battery gate (GPIO2) low.
 7. **Case/enclosure**, clinician review of psychology scripts, privacy review (her data lives on the owner's machine: consent and who can read it).
+
+### Using her outside the house (idea, nothing built, all UNVERIFIED)
+The board is Wi-Fi only. Outside she would join her phone's hotspot (needs multi-network Wi-Fi setup on the board). Ways to reach the host:
+- **She carries the Mac**: robot and Mac on the same phone hotspot. No tunnel, but the Mac must be with her and awake.
+- **Home host + relay**: a small rented server forwards raw TCP to her home machine over a tunnel that the home machine opens outward (works behind CGNAT). TLS stays end to end (pinned CA on the board), so the relay only sees encrypted bytes. Needs an always-on home host (a sleeping laptop is offline).
+- **Third-party tunnel services that terminate TLS** (e.g. Cloudflare Tunnel) are easier but see her audio in plain form at their edge: not recommended for her private content.
+- **Cellular** needs a different board/module and a data plan: not planned.
+Also needed: a battery (none detected, capacity unknown), and an offline mode (face and touch work locally; voice does not). Auth stays as today: per-device key, HMAC before anything else, rate limits.
