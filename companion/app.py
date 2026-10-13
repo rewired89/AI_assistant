@@ -398,7 +398,8 @@ def main(argv: list[str] | None = None) -> int:
                     w.setsampwidth(2)
                     w.setframerate(16000)
                     w.writeframes(pcm)
-                print(f"[audio] {path}: {len(samples) / 16000:.1f} s, average level {rms}, loudest {peak}, ended by {why}")
+                hint = "  <-- SILENT: the board's microphone sent no sound at all" if rms <= 8 else ""
+                print(f"[audio] {path}: {len(samples) / 16000:.1f} s, average level {rms}, loudest {peak}, ended by {why}{hint}")
             app.pipeline.on_audio = _save
 
         def _console() -> None:

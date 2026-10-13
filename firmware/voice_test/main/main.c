@@ -215,6 +215,29 @@ static RingbufHandle_t g_ring;
 static volatile bool g_mic_enabled;   // muted at boot, always
 static bool g_mic_hw_ok;              // false if the microphone chip never answered at boot: the speaker keeps working
 
+// The microphone chip sometimes starts up silent. A live microphone always has a little noise, so a self-check that hears (almost) exactly zero means the chip is not delivering audio.
+static bool mic_alive(void)
+{
+    const int FR = 960;
+    int16_t *raw = malloc(FR * 4 * 2);
+    if (!raw) return true;
+    int peak = 0;
+    for (int k = 0; k < 6; k++) {
+        if (esp_codec_dev_read(in_dev, raw, FR * 4 * 2) != ESP_CODEC_DEV_OK) {
+            free(raw);
+            return false;
+        }
+        if (k < 2) continue;   // ignore the first blocks while the clocks settle
+        for (int i = 0; i < FR * 4; i++) {
+            int a = abs(raw[i]);
+            if (a > peak) peak = a;
+        }
+    }
+    free(raw);
+    ESP_LOGI(TAG, "microphone self-check: loudest sample %d (about 0 to 6 means the chip is silent)", peak);
+    return peak > 6;
+}
+
 static void audio_init(i2c_master_bus_handle_t bus)
 {
     i2s_chan_handle_t tx, rx;
@@ -257,15 +280,25 @@ static void audio_init(i2c_master_bus_handle_t bus)
     ESP_ERROR_CHECK(esp_codec_dev_set_out_vol(out_dev, 0));  // silent until a verified audio.play
     fs.channel = 4;
     fs.channel_mask = ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0) | ESP_CODEC_DEV_MAKE_CHANNEL_MASK(1) | ESP_CODEC_DEV_MAKE_CHANNEL_MASK(2) | ESP_CODEC_DEV_MAKE_CHANNEL_MASK(3);
-    // The microphone chip sometimes does not answer on the first try after a reset (seen once: I2C nack). Retry, and never let it take the speaker down.
+    // The microphone chip sometimes does not answer on the first try after a reset, or answers but stays silent. Retry, and never let it take the speaker down.
     for (int attempt = 1; attempt <= 6 && !g_mic_hw_ok; attempt++) {
         if (esp_codec_dev_open(in_dev, &fs) == ESP_CODEC_DEV_OK) {
-            g_mic_hw_ok = esp_codec_dev_set_in_channel_gain(in_dev, fs.channel_mask, MIC_GAIN_DB) == ESP_CODEC_DEV_OK;
+            esp_codec_dev_set_in_channel_gain(in_dev, fs.channel_mask, MIC_GAIN_DB);
+            if (mic_alive()) {
+                g_mic_hw_ok = true;
+                break;
+            }
+            ESP_LOGW(TAG, "microphone chip is silent (attempt %d of 6), restarting it", attempt);
         } else {
             ESP_LOGW(TAG, "microphone chip did not start (attempt %d of 6)", attempt);
-            esp_codec_dev_close(in_dev);
-            vTaskDelay(pdMS_TO_TICKS(200));
         }
+        esp_codec_dev_close(in_dev);
+        vTaskDelay(pdMS_TO_TICKS(300));
+    }
+    if (!g_mic_hw_ok && esp_codec_dev_open(in_dev, &fs) == ESP_CODEC_DEV_OK) {   // last resort: use it anyway (a very quiet room can read as silence)
+        esp_codec_dev_set_in_channel_gain(in_dev, fs.channel_mask, MIC_GAIN_DB);
+        g_mic_hw_ok = true;
+        ESP_LOGW(TAG, "microphone self-check never heard sound; using the microphone anyway");
     }
     if (!g_mic_hw_ok) ESP_LOGE(TAG, "microphone chip never answered: capture is disabled until the next reboot, playback still works");
 }
@@ -418,6 +451,9 @@ static void capture_task(void *arg)
         int64_t t0 = esp_timer_get_time();
         for (int k = 0; k < 3; k++) esp_codec_dev_read(in_dev, raw, FRAMES * 4 * 2);   // drop stale audio
         const char *reason = "host_request";
+        double sumsq = 0;
+        long nsamp = 0;
+        int peakv = 0;
         for (;;) {
             xSemaphoreTake(g_mu, portMAX_DELAY);
             bool stop = cap.stop;
@@ -434,6 +470,9 @@ static void capture_task(void *arg)
                 int v = ((int)raw[i * 4] + (int)raw[i * 4 + 1]) / 2 * CAPTURE_DIGITAL_GAIN;   // microphones 1 and 2 averaged
                 if (v > 32767) v = 32767;
                 if (v < -32768) v = -32768;
+                sumsq += (double)v * v;
+                nsamp++;
+                if (abs(v) > peakv) peakv = abs(v);
                 frame[12 + i * 2] = v & 0xff;
                 frame[13 + i * 2] = (v >> 8) & 0xff;
             }
@@ -451,7 +490,7 @@ static void capture_task(void *arg)
         char p[160];
         snprintf(p, sizeof p, "{\"capture_id\":\"%s\",\"reason\":\"%s\"}", id, reason);
         send_signed(g_ws, "audio.capture.stopped", "capstop", p);
-        ESP_LOGI(TAG, "capture %s ended: %s", id, reason);
+        ESP_LOGI(TAG, "capture %s ended: %s; average level %d, loudest %d (speech is roughly 300 to 3000; 0 means a silent microphone)", id, reason, nsamp ? (int)sqrt(sumsq / nsamp) : 0, peakv);
     }
 }
 
@@ -653,6 +692,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
+    esp_wifi_set_ps(WIFI_PS_NONE);   // no Wi-Fi power saving: lower delay and fewer dropped connections (re-enable for battery use later)
     xEventGroupWaitBits(s_ev, GOT_IP, pdFALSE, pdTRUE, portMAX_DELAY);
     esp_sntp_config_t sntp = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
     ESP_ERROR_CHECK(esp_netif_sntp_init(&sntp));
