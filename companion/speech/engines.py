@@ -212,7 +212,7 @@ class EspeakSynthesizer(SpeechSynthesizer):
     def __init__(self, voice: str = "en-us", binary: str = "espeak-ng", timeout_s: float = 15.0, runner=None):
         self.binary = shutil.which(binary) if runner is None else binary
         if not self.binary:
-            raise EngineError("espeak-ng is not installed (Windows: install from the espeak-ng releases page)")
+            raise EngineError("espeak-ng is not installed (Linux: sudo apt install espeak-ng; Windows: install from the espeak-ng releases page)")
         self.voice, self.timeout_s, self._run = voice, timeout_s, runner or subprocess.run
 
     def synthesize(self, text: str, style: str = "normal", speed: float = 1.0) -> bytes:
