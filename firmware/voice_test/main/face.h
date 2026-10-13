@@ -10,3 +10,4 @@ bool face_known(const char *name);            // is this one of the protocol ani
 // false = refused because a higher-priority animation is playing. A non-loop animation ends by itself after a short time.
 bool face_play(const char *name, bool loop, int priority, const char *cmd_id);
 bool face_stop(void);                         // false if nothing was playing
+void face_set_backlight(int percent);     // clamped to 0..30 by the firmware; the host cannot raise it

@@ -495,3 +495,21 @@ def test_a_reminder_speech_that_was_cut_off_is_recorded_as_failed(world, tmp_pat
     w.settle()
     assert rs.occurrences()[0]["robot"] == "failed" and w.d.stats["reminder_failed"] == 1
     store.close()
+
+
+def test_late_at_night_and_left_alone_she_is_put_to_bed_once(world):
+    w = world(llm=FakeLanguageModel(["Okay."] * 5), proactive="never")
+    w.beh.settings.quiet_hours = (0, 24)                        # always "late" for this test
+    w.drive(300)
+    assert w.d.stats["bedtime_requested"] == 0                  # not alone long enough yet
+    w.drive(600)
+    assert w.d.stats["bedtime_requested"] == 1 and w.device.power is P.SLEEPING
+    w.drive(300)
+    assert w.d.stats["bedtime_requested"] == 1
+
+
+def test_bedtime_can_be_switched_off(world):
+    w = world(llm=FakeLanguageModel(["Okay."] * 5), proactive="never", bedtime=False)
+    w.beh.settings.quiet_hours = (0, 24)
+    w.drive(2000)
+    assert w.d.stats["bedtime_requested"] == 0 and w.device.power is not P.SLEEPING

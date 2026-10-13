@@ -33,7 +33,7 @@ def _is_local(host: str) -> bool:
 
 class OllamaLanguageModel(LanguageModel):
     def __init__(self, model: str, base_url: str = "http://127.0.0.1:11434", timeout_s: float = 60.0,
-                 temperature: float = 0.7, max_tokens: int = 300, allow_remote: bool = False):
+                 temperature: float = 0.7, max_tokens: int = 100, allow_remote: bool = False):
         u = urlparse(base_url)
         if u.scheme not in ("http", "https") or not u.hostname:
             raise ValueError("base_url must be http(s)://host[:port]")
@@ -45,9 +45,9 @@ class OllamaLanguageModel(LanguageModel):
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))   # never via env proxies
 
     def complete(self, system: str, messages: list[dict], tools: list[dict] | None = None) -> dict:
-        body = {"model": self.model, "stream": False,
+        body = {"model": self.model, "stream": False, "keep_alive": "30m",     # keep the model loaded: no reload delay between turns
                 "messages": [{"role": "system", "content": system}, *messages],
-                "options": {"temperature": self.temperature, "num_predict": self.max_tokens}}
+                "options": {"temperature": self.temperature, "num_predict": self.max_tokens, "num_ctx": 2048}}
         if tools:
             body["tools"] = [{"type": "function", "function": t} for t in tools]
         req = urllib.request.Request(self.base + "/api/chat", data=json.dumps(body).encode(),

@@ -125,7 +125,7 @@ static void send_signed(esp_websocket_client_handle_t c, const char *type, const
 
 static void send_hello(esp_websocket_client_handle_t c)
 {
-    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.4\",\"protocol_versions\":[1],\"recovered_state\":false}");
+    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.5\",\"protocol_versions\":[1],\"recovered_state\":false}");
 }
 
 // ---- incoming: verify first, act second. Anything that fails a check is dropped silently (counted, never answered).
@@ -568,6 +568,101 @@ static void cmd_audio_stop_playback(const char *mid, cJSON *p)
 }
 
 
+// ---- sleep and touch ----
+static volatile bool g_sleeping;
+static time_t g_wake_epoch;            // 0 = no timed wake
+static char g_sleep_reason[16] = "user_request";
+static i2c_master_dev_handle_t g_touch;
+
+static void enter_sleep(const char *reason, time_t wake_epoch, const char *wake_at_json)
+{
+    g_sleeping = true;
+    g_wake_epoch = wake_epoch;
+    snprintf(g_sleep_reason, sizeof g_sleep_reason, "%s", reason);
+    g_mic_enabled = false;                                   // sleeping always mutes; only a physical button unmutes later
+    xSemaphoreTake(g_mu, portMAX_DELAY);
+    bool playing = pb.active;
+    xSemaphoreGive(g_mu);
+    if (playing) finish_playback("interrupted", NULL, NULL);
+    face_play("sleeping", true, 9, "");
+    face_set_backlight(5);
+    char p[120];
+    snprintf(p, sizeof p, "{\"reason\":\"%s\",\"wake_at\":%s}", reason, wake_at_json);
+    send_signed(g_ws, "power.sleeping", "slp", p);
+    ESP_LOGI(TAG, "SLEEPING (%s)", reason);
+}
+static void exit_sleep(const char *cause)
+{
+    g_sleeping = false;
+    g_wake_epoch = 0;
+    face_set_backlight(30);
+    face_stop();
+    char p[120];
+    snprintf(p, sizeof p, "{\"cause\":\"%s\"}", cause);
+    send_signed(g_ws, "power.waking", "wkg", p);
+    snprintf(p, sizeof p, "{\"cause\":\"%s\",\"sleep_reason\":\"%s\"}", cause, g_sleep_reason);
+    send_signed(g_ws, "power.woke", "wok", p);
+    ESP_LOGI(TAG, "AWAKE (%s)", cause);
+}
+
+static long long days_from_civil(int y, int m, int d)
+{
+    y -= m <= 2;
+    long long era = (y >= 0 ? y : y - 399) / 400;
+    unsigned yoe = (unsigned)(y - era * 400), doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1, doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + (long long)doe - 719468;
+}
+// ISO 8601 with an explicit UTC offset, e.g. 2026-10-14T08:00:00-04:00
+static bool parse_iso(const char *s, time_t *out)
+{
+    int Y, M, D, h, m, sec, n = 0;
+    if (sscanf(s, "%4d-%2d-%2dT%2d:%2d:%2d%n", &Y, &M, &D, &h, &m, &sec, &n) != 6 || n == 0) return false;
+    if (M < 1 || M > 12 || D < 1 || D > 31 || h > 23 || m > 59 || sec > 60) return false;
+    const char *r = s + n;
+    if (*r == '.') { r++; while (*r >= '0' && *r <= '9') r++; }
+    long off = 0;
+    if (*r == 'Z' && r[1] == 0) off = 0;
+    else if ((*r == '+' || *r == '-') && strlen(r) == 6 && r[3] == ':') {
+        int oh = atoi(r + 1), om = atoi(r + 4);
+        off = (oh * 3600 + om * 60) * (*r == '-' ? -1 : 1);
+    } else return false;
+    *out = (time_t)(days_from_civil(Y, M, D) * 86400LL + h * 3600 + m * 60 + sec - off);
+    return true;
+}
+
+static void cmd_power_sleep(const char *mid, cJSON *p)
+{
+    cJSON *reason = cJSON_GetObjectItem(p, "reason"), *wake = cJSON_GetObjectItem(p, "wake_at");
+    bool ok = cJSON_IsString(reason) && (!strcmp(reason->valuestring, "battery_saving") || !strcmp(reason->valuestring, "user_request") || !strcmp(reason->valuestring, "scheduled"));
+    if (!ok || (wake && !cJSON_IsNull(wake) && (!cJSON_IsString(wake) || strlen(wake->valuestring) > 39))) { reply_failed(mid, "invalid_payload", "bad power.sleep payload"); return; }
+    time_t at = 0;
+    char wj[64] = "null";
+    if (cJSON_IsString(wake)) {
+        time_t now = time(NULL);
+        if (!parse_iso(wake->valuestring, &at) || now < 1700000000 || at <= now || at - now > 30 * 86400) { reply_failed(mid, "invalid_payload", "wake_at not usable"); return; }
+        snprintf(wj, sizeof wj, "\"%s\"", wake->valuestring);
+    }
+    if (g_sleeping) { reply_failed(mid, "invalid_state", "already sleeping"); return; }
+    reply_accepted(mid, "power.sleep");
+    enter_sleep(reason->valuestring, at, wj);
+    reply_completed(mid);
+}
+static void cmd_power_wake(const char *mid, cJSON *p)
+{
+    cJSON *reason = cJSON_GetObjectItem(p, "reason");
+    if (!cJSON_IsString(reason)) { reply_failed(mid, "invalid_payload", "bad power.wake payload"); return; }
+    if (!g_sleeping) { reply_failed(mid, "invalid_state", "already awake"); return; }
+    reply_accepted(mid, "power.wake");
+    exit_sleep("host_request");
+    reply_completed(mid);
+}
+static bool touch_down(void)
+{
+    uint8_t reg = 0x01, d[6] = {0};
+    if (!g_touch || i2c_master_transmit_receive(g_touch, &reg, 1, d, 6, 50) != ESP_OK) return false;
+    return (d[1] & 0x0F) > 0;
+}
+
 // ---- animations (the face) ----
 static void anim_finished(const char *name, const char *cmd, bool interrupted)
 {
@@ -646,6 +741,8 @@ static void on_host_text(esp_websocket_client_handle_t c, const char *txt, int n
     else if (strcmp(t, "audio.stop_playback") == 0) cmd_audio_stop_playback(m, payload);
     else if (strcmp(t, "audio.start_capture") == 0) cmd_audio_start_capture(m, payload);
     else if (strcmp(t, "audio.stop_capture") == 0) cmd_audio_stop_capture(m, payload);
+    else if (strcmp(t, "power.sleep") == 0) cmd_power_sleep(m, payload);
+    else if (strcmp(t, "power.wake") == 0) cmd_power_wake(m, payload);
     else if (strcmp(t, "animation.play") == 0) cmd_animation_play(m, payload);
     else if (strcmp(t, "animation.stop") == 0) cmd_animation_stop(m);
     else reply_failed(m, "unsupported_command", "not implemented in this test firmware");
@@ -667,7 +764,7 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     switch (id) {
     case WEBSOCKET_EVENT_CONNECTED:
         ESP_LOGI(TAG, "wss CONNECTED: certificate check against our CA succeeded");
-        face_stop();   // drop the local offline face; the host sets the next one
+        if (!g_sleeping) face_stop();   // drop the local offline face; the host sets the next one
         send_hello((esp_websocket_client_handle_t)arg);
         break;
     case WEBSOCKET_EVENT_DISCONNECTED:
@@ -700,7 +797,16 @@ void app_main(void)
     ESP_ERROR_CHECK(i2c_new_master_bus(&ib, &bus));
     audio_init(bus);
     if (face_init(anim_finished)) face_play("offline", true, 1, "");   // offline face until the host connects; screen failure is non-fatal
-    gpio_config_t bc = {.mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE, .pin_bit_mask = (1ULL << NT_BTN_PLUS) | (1ULL << NT_BTN_BOOT)};
+    // touch controller (CST816 at 0x15): reset pulse, then add it to the shared I2C bus. Failure is non-fatal.
+    gpio_config_t trc = {.mode = GPIO_MODE_OUTPUT, .pin_bit_mask = 1ULL << NT_TOUCH_RST};
+    gpio_config(&trc);
+    gpio_set_level(NT_TOUCH_RST, 0);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    gpio_set_level(NT_TOUCH_RST, 1);
+    vTaskDelay(pdMS_TO_TICKS(60));
+    i2c_device_config_t tdc = {.dev_addr_length = I2C_ADDR_BIT_LEN_7, .device_address = 0x15, .scl_speed_hz = 400000};
+    if (i2c_master_bus_add_device(bus, &tdc, &g_touch) != ESP_OK) { g_touch = NULL; ESP_LOGW(TAG, "touch controller not added"); }
+    gpio_config_t bc = {.mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE, .pin_bit_mask = (1ULL << NT_BTN_PLUS) | (1ULL << NT_BTN_BOOT) | (1ULL << NT_BTN_PWR)};
     ESP_ERROR_CHECK(gpio_config(&bc));
     xTaskCreate(playback_task, "playback", 6144, NULL, 6, NULL);
     xTaskCreate(capture_task, "capture", 8192, NULL, 6, NULL);
@@ -735,19 +841,39 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_websocket_client_start(g_ws));
     ESP_LOGI(TAG, "ready. Microphone is MUTED. +/KEY unmutes or mutes the microphone (only the physical button can unmute). BOOT/- is push-to-talk.");
 
-    bool prev_plus = false, prev_main = false;
+    bool prev_plus = false, prev_main = false, prev_pwr = false, prev_touch = false;
+    int64_t last_touch_event_us = 0;
     for (;;) {
-        bool plus = gpio_get_level(NT_BTN_PLUS) == 0, main_btn = gpio_get_level(NT_BTN_BOOT) == 0;
-        if (plus && !prev_plus) {
-            g_mic_enabled = g_mic_hw_ok && !g_mic_enabled;
-            ESP_LOGI(TAG, "MICROPHONE %s", g_mic_enabled ? "ON (unmuted by the button)" : "OFF (muted)");
-        }
-        if (main_btn && !prev_main) {   // BOOT/- is the push-to-talk button, named "main" in the protocol
-            ESP_LOGI(TAG, "button main pressed (push to talk)");
-            send_signed(g_ws, "button.pressed", "btn", "{\"button\":\"main\",\"kind\":\"single\"}");
+        bool plus = gpio_get_level(NT_BTN_PLUS) == 0, main_btn = gpio_get_level(NT_BTN_BOOT) == 0, pwr = gpio_get_level(NT_BTN_PWR) == 0;
+        bool touch = touch_down();
+        if (g_sleeping) {
+            // asleep: any physical touch or button wakes her (the buttons do nothing else), or the timed wake arrives
+            if ((plus && !prev_plus) || (main_btn && !prev_main) || (pwr && !prev_pwr) || (touch && !prev_touch)) exit_sleep("button");
+            else if (g_wake_epoch && time(NULL) >= g_wake_epoch) exit_sleep("scheduled");
+        } else {
+            if (pwr && !prev_pwr) enter_sleep("user_request", 0, "null");   // PWR: short press = go to sleep
+            else {
+                if (plus && !prev_plus) {
+                    g_mic_enabled = g_mic_hw_ok && !g_mic_enabled;
+                    ESP_LOGI(TAG, "MICROPHONE %s", g_mic_enabled ? "ON (unmuted by the button)" : "OFF (muted)");
+                }
+                if (main_btn && !prev_main) {   // BOOT/- is the push-to-talk button, named "main" in the protocol
+                    ESP_LOGI(TAG, "button main pressed (push to talk)");
+                    send_signed(g_ws, "button.pressed", "btn", "{\"button\":\"main\",\"kind\":\"single\"}");
+                }
+                int64_t now_us = esp_timer_get_time();
+                if (touch && !prev_touch && now_us - last_touch_event_us > 1500000) {   // at most one touch event per 1.5 s
+                    last_touch_event_us = now_us;
+                    ESP_LOGI(TAG, "touch");
+                    face_play("happy", false, 3, "");   // instant local reaction; the host may follow with its own
+                    send_signed(g_ws, "touch.detected", "tch", "{\"zone\":\"screen\"}");
+                }
+            }
         }
         prev_plus = plus;
         prev_main = main_btn;
+        prev_pwr = pwr;
+        prev_touch = touch;
         vTaskDelay(pdMS_TO_TICKS(30));
     }
 }

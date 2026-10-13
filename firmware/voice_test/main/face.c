@@ -230,3 +230,12 @@ bool face_stop(void)
     if (had) finish_cb(name, cmd, true);
     return had;
 }
+
+void face_set_backlight(int percent)
+{
+    if (!g_ok) return;
+    if (percent < 0) percent = 0;
+    if (percent > BACKLIGHT_PERCENT) percent = BACKLIGHT_PERCENT;
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, (percent * 1023) / 100);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+}

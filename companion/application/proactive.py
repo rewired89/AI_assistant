@@ -13,10 +13,12 @@ import random
 from collections import Counter, deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Callable
 
 from ..behavior import BehaviorEngine, Intent, Plan, to_commands
 from ..conversation.engine import ConversationEngine
+from ..scheduling.sleep import build_sleep_payload
 from ..speech.pipeline import State, VoicePipeline
 
 SKIP_KEYS = {"user_name", "preferred_name"}
@@ -31,6 +33,9 @@ class DirectorConfig:
     speak_memories: bool = True
     memory_candidates: int = 3
     max_memory_chars: int = 80
+    bedtime: bool = True              # during quiet hours, ask the device to sleep after she has been left alone
+    bedtime_idle_s: float = 600.0
+    bedtime_retry_s: float = 1800.0
 
 
 class ProactiveDirector:
@@ -57,7 +62,8 @@ class ProactiveDirector:
         self._composing: tuple[Future, Intent, str] | None = None
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="proactive")
         self._used: dict[str, float] = {}
-        self._last_idle = self._last_save = clock()
+        self._last_idle = self._last_save = self._last_activity = clock()
+        self._last_bedtime_try = -1e18
         self._battery = "ok"
         self._last_anim: str | None = None
         pipeline.client.add_listener(self._on_event)
@@ -69,6 +75,8 @@ class ProactiveDirector:
     # ---- inputs ------------------------------------------------------------------------
     def _on_event(self, msg: dict) -> None:
         t, p = msg["type"], msg["payload"]
+        if t in ("button.pressed", "touch.detected", "power.woke"):
+            self._last_activity = self.clock()
         if t == "power.sleeping":
             self.asleep, self._sleep_reason = True, p["reason"]
             self._pending.clear()
@@ -95,6 +103,7 @@ class ProactiveDirector:
     def _on_reply(self, reply) -> None:
         if reply.interaction == "none":                     # safety and reflection turns never count as growth or play
             return
+        self._last_activity = self.clock()
         self._stimuli.append(("interaction", {"kind": reply.interaction or "conversation"}))
 
     # ---- loop ----------------------------------------------------------------------------
@@ -112,6 +121,7 @@ class ProactiveDirector:
         if (not self.asleep and self.pipeline.state is State.IDLE and now - self._last_idle >= self.cfg.idle_tick_s):
             self._last_idle = now
             self._handle(self.behavior.react("idle_tick", memory_refs=self._memory_refs(now)), now)
+        self._bedtime(now)
         self._queue_followups(now)
         self._deliver_reminders(now)
         self._deliver_insight(now)
@@ -120,6 +130,26 @@ class ProactiveDirector:
         if self.state_store is not None and (saw_interaction or now - self._last_save >= self.cfg.save_interval_s):
             self.state_store.save(self.behavior.state)
             self._last_save = now
+
+    def _bedtime(self, now: float) -> None:
+        """Late at night, once she has been left alone for a while, ask the device to sleep until quiet hours end.
+        The device may refuse; the touch or a button wakes it again."""
+        if (not self.cfg.bedtime or self.asleep or self.pipeline.state is not State.IDLE
+                or not self.behavior._quiet_hour(now) or now - self._last_activity < self.cfg.bedtime_idle_s
+                or now - self._last_bedtime_try < self.cfg.bedtime_retry_s):
+            return
+        self._last_bedtime_try = now
+        tz = self.behavior.state.tz
+        local = datetime.fromtimestamp(now, tz)
+        wake = local.replace(hour=self.behavior.settings.quiet_hours[1] % 24, minute=0, second=0, microsecond=0)
+        if wake <= local:
+            wake += timedelta(days=1)
+        try:
+            payload = build_sleep_payload(wake, local, reason="scheduled", requested_by="system")
+            self.pipeline.client.request("power.sleep", payload, timeout_s=2.0, until="accepted")
+            self.stats["bedtime_requested"] += 1
+        except Exception:
+            self.stats["bedtime_failed"] += 1
 
     def _handle(self, plan: Plan, now: float) -> None:
         if plan.animation and not self.asleep and self.pipeline.state is State.IDLE:
