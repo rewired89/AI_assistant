@@ -371,3 +371,9 @@ def test_tool_call_only_reply_gets_a_spoken_follow_up(clock):
     eng, _ = make(clock, llm)
     assert eng.respond("can you hear me").text == "Yes, I can hear you."
     assert llm.calls[1]["tools"] == [] and eng.stats["blocked_replies"] == 0
+
+
+def test_tool_call_written_as_text_is_not_spoken(clock):
+    llm = FakeLanguageModel(['{"name":"request sleep","parameters{"}', "Of course, tell me more."])
+    eng, _ = make(clock, llm)
+    assert eng.respond("it is afternoon").text == "Of course, tell me more."

@@ -215,7 +215,7 @@ class ConversationEngine:
                 raise
             except Exception as e:
                 raise LLMUnavailable(type(e).__name__) from None
-            if not raw.strip():
+            if not raw.strip() or (raw.lstrip().startswith("{") and '"name"' in raw):
                 # small models often answer with a tool call only; ask again for the spoken words, no tools
                 try:
                     again = self.llm.complete(system + "\nReply to the user now in one or two short spoken sentences.",
