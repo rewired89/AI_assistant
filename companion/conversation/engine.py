@@ -37,7 +37,7 @@ ABSENCE = re.compile(r"\b(haven'?t seen you|been (away|gone)|long time|missed yo
                      r"for (hours|days|ages|so long)|welcome back|you('re| are) back|finally)\b", re.I)
 ASSERTS_ABOUT_HER = re.compile(r"\b(i know (that )?you|you (were|went|did|had|have been|'ve been|just|already|must have|probably)|"
                                r"you('re| are) (always|never))\b", re.I)
-PLAY = re.compile(r"\b(let'?s play|wanna play|want to play|play (a )?(game|something))\b", re.I)
+PLAY = re.compile(r"\b(let'?s play|wanna play|want to play|play (a |some )?(game|games|something)|play with me|games?|hide and seek|riddles?)\b", re.I)
 TEACH = re.compile(r"\b(did you know|let me teach|i'?ll teach|i want to teach|remember that|learn (that|about))\b", re.I)
 EXPLORE = re.compile(r"\b(tell me about|what is|what are|how does|how do|why do|why is)\b", re.I)
 PURPOSE = {

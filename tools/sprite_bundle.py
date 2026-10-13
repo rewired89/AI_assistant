@@ -5,7 +5,7 @@
 
 Format NTSB v1 (little endian): 'NTSB', version u8, count u8, then per set: name[8] (NUL padded), offset u32, size u32
 (offsets from the start of the file), followed by the NTSP v1 blobs from tools.export_sprites (4-byte aligned).
-Sets: egg -> assets/sprites/egg.json, baby -> baby.json, adult -> default.json. Partition: 0x310000, 1 MiB (firmware/voice_test/partitions.csv).
+Sets: baby -> assets/sprites/baby.json (games and activities), adult -> default.json (everything else). egg.json is kept but not flashed. Partition: 0x310000, 1 MiB (firmware/voice_test/partitions.csv).
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from pathlib import Path
 from tools.export_sprites import export, load
 
 ROOT = Path(__file__).resolve().parent.parent
-SETS = [("egg", "egg.json"), ("baby", "baby.json"), ("adult", "default.json")]
+SETS = [("baby", "baby.json"), ("adult", "default.json")]   # egg.json is kept in assets/ but not flashed for now
 PARTITION_OFFSET, PARTITION_SIZE = 0x310000, 0x100000
 
 

@@ -515,11 +515,15 @@ def test_bedtime_can_be_switched_off(world):
     assert w.d.stats["bedtime_requested"] == 0 and w.device.power is not P.SLEEPING
 
 
-def test_device_is_told_which_sprite_set_matches_her_stage(world):
+def test_baby_sprite_only_while_playing_then_back_to_the_grown_fox(world):
     w = world(llm=FakeLanguageModel(["Okay."] * 5), proactive="never")
-    w.beh.state.stage = "BABY"
     w.drive(60)
-    assert w.d._sprite_sent == "baby" and w.device.state["config"].get("sprite_set") == "baby"
-    w.beh.state.stage = "YOUNG"
-    w.drive(60)
+    assert w.device.state["config"].get("sprite_set") == "adult"
+    w.d._on_reply(Reply("Let's play a game!", interaction="play"))
+    w.drive(30)
+    assert w.device.state["config"].get("sprite_set") == "baby"
+    w.drive(400)
+    assert w.device.state["config"].get("sprite_set") == "adult"
+    w.d._on_reply(Reply("I like to watch moving lights.", interaction="conversation"))
+    w.drive(30)
     assert w.device.state["config"].get("sprite_set") == "adult"

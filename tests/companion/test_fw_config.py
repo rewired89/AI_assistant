@@ -129,4 +129,4 @@ def test_sprite_bundle_roundtrips_and_fits_the_partition():
     data = sprite_bundle.build(sprite_bundle.ROOT / "assets" / "sprites")
     assert len(data) <= sprite_bundle.PARTITION_SIZE
     names = [line.split(":")[0] for line in sprite_bundle.check(data)]
-    assert names == ["egg", "baby", "adult"]
+    assert names == ["baby", "adult"]

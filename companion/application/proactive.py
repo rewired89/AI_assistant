@@ -10,6 +10,7 @@ Call tick() from the same loop that calls VoicePipeline.poll().
 from __future__ import annotations
 
 import random
+import re
 from collections import Counter, deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
@@ -33,6 +34,7 @@ class DirectorConfig:
     speak_memories: bool = True
     memory_candidates: int = 3
     max_memory_chars: int = 80
+    activity_s: float = 240.0         # how long the baby sprite stays after the last game or activity talk
     bedtime: bool = True              # during quiet hours, ask the device to sleep after she has been left alone
     bedtime_idle_s: float = 600.0
     bedtime_retry_s: float = 1800.0
@@ -64,6 +66,7 @@ class ProactiveDirector:
         self._used: dict[str, float] = {}
         self._last_idle = self._last_save = self._last_activity = clock()
         self._last_bedtime_try = -1e18
+        self._activity_until = -1e18                      # the baby sprite shows until this time (a game or activity is going on)
         self._sprite_sent: str | None = None            # which sprite set the device was last told to show
         self._battery = "ok"
         self._last_anim: str | None = None
@@ -106,6 +109,8 @@ class ProactiveDirector:
     def _on_reply(self, reply) -> None:
         if reply.interaction == "none":                     # safety and reflection turns never count as growth or play
             return
+        if reply.interaction == "play" or self.ACTIVITY_WORDS.search(reply.text or ""):
+            self._activity_until = self.clock() + self.cfg.activity_s
         self._last_activity = self.clock()
         self._stimuli.append(("interaction", {"kind": reply.interaction or "conversation"}))
 
@@ -135,10 +140,11 @@ class ProactiveDirector:
             self.state_store.save(self.behavior.state)
             self._last_save = now
 
-    SPRITE_SETS = {"EGG": "egg", "BABY": "baby"}            # every later stage uses the adult set
+    ACTIVITY_WORDS = re.compile(r"\b(games?|let'?s play|play with me|hide and seek|riddles?)\b", re.I)
 
     def _sync_sprite_set(self) -> None:
-        want = self.SPRITE_SETS.get(self.behavior.state.stage, "adult")
+        """The grown-up fox is her everyday face; the baby shows up only while they are playing a game or doing an activity."""
+        want = "baby" if self.clock() < self._activity_until else "adult"
         if want == self._sprite_sent or self.asleep:
             return
         try:
