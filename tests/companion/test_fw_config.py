@@ -63,3 +63,30 @@ def test_firmware_command_failed_layout_is_accepted_by_the_host():
     assert Authenticator(key, lambda: ts, did).verify(msg) == 1
     from protocol import validate_payload
     validate_payload(msg, "event")
+
+
+def test_voice_firmware_event_payloads_validate_against_the_schema():
+    """The exact payload strings built in firmware/voice_test/main/main.c (keys already sorted) must be accepted by the host's schema."""
+    from protocol import validate_payload
+    cases = {
+        "audio.playback.finished": '{"bytes_played":%u,"result":"%s","stream_id":"%s","underruns":%d}' % (96000, "completed", "s75c8f823f7", 0),
+        "audio.capture.started": '{"capture_id":"%s"}' % "cap-1",
+        "audio.capture.stopped": '{"capture_id":"%s","reason":"%s"}' % ("cap-1", "host_request"),
+        "command.accepted": '{"command_id":"%s","command_type":"%s"}' % ("abcdefgh12", "audio.play"),
+        "command.completed": '{"command_id":"%s"}' % "abcdefgh12",
+        "command.failed": '{"code":"%s","command_id":"%s","message":"%s"}' % ("not_allowed", "abcdefgh12", "microphone is muted"),
+    }
+    for mtype, raw in cases.items():
+        payload = json.loads(raw)
+        assert list(payload) == sorted(payload), f"{mtype}: keys must be written in sorted order for canonical signing"
+        validate_payload({"type": mtype, "payload": payload, "message_id": "abcdefgh12"}, "event")
+
+
+def test_voice_firmware_capture_frame_header_matches_the_host_parser():
+    """Header bytes laid out like capture_task(): version 1, kind 1, stream_no, seq, flags, codec 0, length."""
+    from protocol import audio as aud
+    frame = bytes([1, 1, 0x12, 0x34, 0, 0, 0, 7, 0, 0, 0x07, 0x80]) + bytes(1920)
+    f = aud.unpack(frame)
+    assert (f.kind, f.stream_no, f.seq, f.flags, f.codec, len(f.payload)) == (aud.KIND_CAPTURE, 0x1234, 7, 0, aud.CODEC_PCM16, 1920)
+    end = aud.unpack(bytes([1, 1, 0x12, 0x34, 0, 0, 0, 8, 1, 0, 0, 0]))
+    assert end.end and end.payload == b""
