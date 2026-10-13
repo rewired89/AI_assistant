@@ -361,3 +361,15 @@ def test_a_broken_dev_hook_cannot_break_the_pipeline(rig):
     r.pipe.on_heard = lambda t: 1 / 0
     r.utter(); r.idle()
     assert r.responder.heard == ["hello"]
+
+
+def test_dev_audio_hook_gets_the_pcm_and_the_reason_and_cannot_break_the_pipeline(rig):
+    got = []
+    r = rig(stt=FakeRecognizer(["hello"]))
+    r.pipe.on_audio = lambda pcm, why: got.append((len(pcm), why))
+    r.utter(); r.idle()
+    assert len(got) == 1 and got[0][0] > 0 and got[0][1] in ("silence", "button", "device")
+    r2 = rig(stt=FakeRecognizer(["hello"]))
+    r2.pipe.on_audio = lambda pcm, why: 1 / 0
+    r2.utter(); r2.idle()
+    assert r2.responder.heard == ["hello"]

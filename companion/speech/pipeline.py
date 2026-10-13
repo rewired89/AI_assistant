@@ -140,6 +140,7 @@ class VoicePipeline:
         self._device_sleeping = False
         self.on_reply: Callable[[Reply], None] | None = None   # told about each model reply (no audio, no transcript)
         self.on_heard: Callable[[str], None] | None = None     # DEV RIGS ONLY (desk robot): the cleaned transcript, "" if none
+        self.on_audio: Callable[[bytes, str], None] | None = None  # DEV RIGS ONLY (--save-audio): the raw PCM of one listening turn and why it ended
         self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="voice")
         self._cap: Capture | None = None
         self._det: EndpointDetector | None = None
@@ -300,7 +301,12 @@ class VoicePipeline:
         for chunk in cap.chunks[self._fed:]:
             det.feed(chunk)
         pcm, corrupt = cap.pcm, cap.corrupt
-        self.client.captures.pop(cap.stream_no, None)   # audio is not kept
+        if self.on_audio is not None:
+            try:
+                self.on_audio(pcm, why)
+            except Exception:
+                pass
+        self.client.captures.pop(cap.stream_no, None)   # audio is not kept (unless a dev rig asked for a copy above)
         self._cap = self._det = None
         self._note(f"listen_end:{why}")
         if corrupt:

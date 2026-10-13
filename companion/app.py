@@ -357,6 +357,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="companion")
     ap.add_argument("--config", required=True)
     ap.add_argument("--show-heard", action="store_true", help="with --console: also print what the speech recognizer heard (testing with your OWN voice only)")
+    ap.add_argument("--save-audio", metavar="FOLDER", help="with --console: save what the board recorded as .wav files in FOLDER so you can listen (testing with your OWN voice only; delete them afterwards)")
     ap.add_argument("--console", action="store_true", help="type `say some words` in this terminal to make the robot speak them (dev/testing only)")
     a = ap.parse_args(argv)
     try:
@@ -373,6 +374,29 @@ def main(argv: list[str] | None = None) -> int:
         app.console_verbose = True
         if a.show_heard:
             app.pipeline.on_heard = lambda text: print(f"[heard] {text!r}")
+        if a.save_audio:
+            import array
+            import math
+            import wave
+            folder = Path(a.save_audio).expanduser()
+            folder.mkdir(parents=True, exist_ok=True)
+            counter = [0]
+
+            def _save(pcm: bytes, why: str) -> None:
+                counter[0] += 1
+                samples = array.array("h")
+                samples.frombytes(pcm[: len(pcm) // 2 * 2])
+                rms = int(math.sqrt(sum(x * x for x in samples) / max(1, len(samples))))
+                peak = max((abs(x) for x in samples), default=0)
+                path = folder / f"heard-{counter[0]}.wav"
+                with wave.open(str(path), "wb") as w:
+                    w.setnchannels(1)
+                    w.setsampwidth(2)
+                    w.setframerate(16000)
+                    w.writeframes(pcm)
+                print(f"[audio] {path}: {len(samples) / 16000:.1f} s, average level {rms}, loudest {peak}, ended by {why}")
+            app.pipeline.on_audio = _save
+
         def _console() -> None:
             print("console: type `say hello there` and press ENTER to hear it on the robot. Ctrl+C stops everything.")
             for line in sys.stdin:
