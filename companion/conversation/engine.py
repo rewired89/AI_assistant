@@ -215,6 +215,18 @@ class ConversationEngine:
                 raise
             except Exception as e:
                 raise LLMUnavailable(type(e).__name__) from None
+            if not raw.strip():
+                # small models often answer with a tool call only; ask again for the spoken words, no tools
+                try:
+                    again = self.llm.complete(system + "\nReply to the user now in one or two short spoken sentences.",
+                                              messages, [])
+                    raw2 = again.get("text", "")
+                    if isinstance(raw2, str) and raw2.strip():
+                        raw = raw2
+                except LLMUnavailable:
+                    raise
+                except Exception as e:
+                    raise LLMUnavailable(type(e).__name__) from None
             text = speechify(raw, self.cfg.reply_max_chars)
             if not violations(raw, self.canary) and not violations(text, self.canary) and text:
                 return text, calls

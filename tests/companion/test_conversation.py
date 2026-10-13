@@ -364,3 +364,10 @@ def test_engine_works_with_ollama_adapter_end_to_end(stub, clock):
     _Stub.reply = {"message": {"role": "assistant", "content": "Hello **friend** 😀", "tool_calls": []}}
     eng, _ = make(clock, OllamaLanguageModel("tiny", base_url=stub))
     assert eng.respond("hi").text == "Hello friend"
+
+
+def test_tool_call_only_reply_gets_a_spoken_follow_up(clock):
+    llm = FakeLanguageModel([{"text": "", "tool_calls": [call("show_emotion", emotion="happy")]}, "Yes, I can hear you."])
+    eng, _ = make(clock, llm)
+    assert eng.respond("can you hear me").text == "Yes, I can hear you."
+    assert llm.calls[1]["tools"] == [] and eng.stats["blocked_replies"] == 0
