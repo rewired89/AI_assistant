@@ -1,6 +1,6 @@
 # Voice test (device firmware v0.3)
 The host plays speech through the board's speaker (`audio.play` + binary frames) and can record the microphone (`audio.start_capture`).
-- The microphone is MUTED at every boot. Only the physical **+/KEY** button (GPIO4) toggles it. The host can never unmute (protocol rule).
+- The microphone is MUTED at every boot. Only the physical **+/KEY** button (GPIO4) toggles it; the host can never unmute. **BOOT/-** (GPIO0) is push-to-talk (sent as button.pressed "main"). To make her speak on demand run the host with `python -m companion --config deploy/companion.yaml --console` and type `say hello there`.
 - Everything else the host sends is answered `command.failed unsupported_command` (animations, display, status) until the screen firmware exists.
 Setup (same as net_test, in bash with ESP-IDF active; the venv terminal for the Python step):
 ```

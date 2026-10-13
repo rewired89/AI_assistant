@@ -621,7 +621,7 @@ void app_main(void)
     i2c_master_bus_config_t ib = {.i2c_port = I2C_NUM_0, .sda_io_num = NT_I2C_SDA, .scl_io_num = NT_I2C_SCL, .clk_source = I2C_CLK_SRC_DEFAULT, .glitch_ignore_cnt = 7, .flags.enable_internal_pullup = true};
     ESP_ERROR_CHECK(i2c_new_master_bus(&ib, &bus));
     audio_init(bus);
-    gpio_config_t bc = {.mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE, .pin_bit_mask = 1ULL << NT_BTN_PLUS};
+    gpio_config_t bc = {.mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE, .pin_bit_mask = (1ULL << NT_BTN_PLUS) | (1ULL << NT_BTN_BOOT)};
     ESP_ERROR_CHECK(gpio_config(&bc));
     xTaskCreate(playback_task, "playback", 6144, NULL, 6, NULL);
     xTaskCreate(capture_task, "capture", 8192, NULL, 6, NULL);
@@ -653,16 +653,21 @@ void app_main(void)
     g_ws = esp_websocket_client_init(&wsc);
     esp_websocket_register_events(g_ws, WEBSOCKET_EVENT_ANY, ws_event, (void *)g_ws);
     ESP_ERROR_CHECK(esp_websocket_client_start(g_ws));
-    ESP_LOGI(TAG, "ready. Microphone is MUTED. Press +/KEY to unmute or mute (only the physical button can unmute).");
+    ESP_LOGI(TAG, "ready. Microphone is MUTED. +/KEY unmutes or mutes the microphone (only the physical button can unmute). BOOT/- is push-to-talk.");
 
-    bool prev = false;
+    bool prev_plus = false, prev_main = false;
     for (;;) {
-        bool now = gpio_get_level(NT_BTN_PLUS) == 0;
-        if (now && !prev) {
+        bool plus = gpio_get_level(NT_BTN_PLUS) == 0, main_btn = gpio_get_level(NT_BTN_BOOT) == 0;
+        if (plus && !prev_plus) {
             g_mic_enabled = !g_mic_enabled;
             ESP_LOGI(TAG, "MICROPHONE %s", g_mic_enabled ? "ON (unmuted by the button)" : "OFF (muted)");
         }
-        prev = now;
+        if (main_btn && !prev_main) {   // BOOT/- is the push-to-talk button, named "main" in the protocol
+            ESP_LOGI(TAG, "button main pressed (push to talk)");
+            send_signed(g_ws, "button.pressed", "btn", "{\"button\":\"main\",\"kind\":\"single\"}");
+        }
+        prev_plus = plus;
+        prev_main = main_btn;
         vTaskDelay(pdMS_TO_TICKS(30));
     }
 }

@@ -196,3 +196,14 @@ def test_phone_app_config_is_validated_and_the_voice_to_phone_path_works(home):
         assert app.productivity.notes()[0]["body"] == "I want a magnetic robot enclosure"
     finally:
         app.close()
+
+
+def test_console_say_lines_go_through_the_speech_path(home):
+    """Dev console (`--console`): a typed line is spoken via VoicePipeline.speak, one at a time, and the outcome is reported."""
+    with Running(home) as r:
+        said, out = [], []
+        r.app.pipeline.speak = lambda text, *a, **k: said.append(text) or True
+        r.app.console_out = out.append
+        r.app.console_say.put("hello there")
+        assert wait_for(lambda: said == ["hello there"], 5)
+        assert wait_for(lambda: out and "speaking" in out[-1], 5)

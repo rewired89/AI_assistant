@@ -9,6 +9,7 @@ than by fakes that pretend."""
 from __future__ import annotations
 
 import os
+import queue
 import random
 import signal
 import threading
@@ -256,6 +257,8 @@ class Companion:
                                           reminder_name=lambda: self.onboarding.user_name())
         self._closers += [self.pipeline.close, self.director.close]
         self._started = False
+        self.console_say: queue.SimpleQueue = queue.SimpleQueue()      # dev console: text typed by the owner on the host to be spoken
+        self.console_out = print
 
     def _make_stt(self) -> SpeechRecognizer:
         if self.cfg.stt.get("engine") == "whisper":
@@ -286,7 +289,18 @@ class Companion:
             self.webapp.start()
         self._started = True
 
+    def _drain_console(self) -> None:
+        """Owner-typed `say` lines from the dev console go through the normal speech path (no model, no memory, no device command bypass)."""
+        while True:
+            try:
+                text = self.console_say.get_nowait()
+            except queue.Empty:
+                return
+            ok = self.pipeline.speak(text)
+            self.console_out(f"[say] {'speaking' if ok else 'busy right now, try again in a moment'}")
+
     def step(self) -> None:
+        self._drain_console()
         self.personality.cfg = self.onboarding.effective_config()      # onboarding answers take effect live
         self.adapter.observe(self.state.kind_counts)
         self.pipeline.poll()
@@ -331,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
     import sys
     ap = argparse.ArgumentParser(prog="companion")
     ap.add_argument("--config", required=True)
+    ap.add_argument("--console", action="store_true", help="type `say some words` in this terminal to make the robot speak them (dev/testing only)")
     a = ap.parse_args(argv)
     try:
         app = Companion(AppConfig.load(a.config))
@@ -342,5 +357,15 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, lambda *_: stop.set())
     print(f"companion running on {app.cfg.host}:{app.cfg.port}; Ctrl+C to stop")
+    if a.console:
+        def _console() -> None:
+            print("console: type `say hello there` and press ENTER to hear it on the robot. Ctrl+C stops everything.")
+            for line in sys.stdin:
+                line = line.strip()
+                if line.lower().startswith("say ") and len(line) > 4:
+                    app.console_say.put(line[4:].strip()[:300])
+                elif line:
+                    print("console: the only command is `say some words`")
+        threading.Thread(target=_console, daemon=True).start()
     app.run(stop)
     return 0
