@@ -378,6 +378,7 @@ def main(argv: list[str] | None = None) -> int:
         if a.show_heard:
             app.pipeline.on_heard = lambda text: print(f"[heard] {text!r}")
             app.pipeline.on_reply = lambda reply: print(f"[replied] {reply.text!r}")
+            app.conversation.on_blocked = lambda raw, why: print(f"[blocked] {why} model said: {raw[:300]!r}")
         if a.save_audio:
             import array
             import math

@@ -219,7 +219,13 @@ class ConversationEngine:
             if not violations(raw, self.canary) and not violations(text, self.canary) and text:
                 return text, calls
             self.stats["blocked_replies"] += 1
-        return SAFE_FALLBACK, []                            # tool calls from a rule-breaking reply are discarded too
+            hook = getattr(self, "on_blocked", None)        # DEV RIGS ONLY: why a reply was dropped
+            if hook is not None:
+                try:
+                    hook(raw, violations(raw, self.canary) or violations(text, self.canary) or ["empty"])
+                except Exception:
+                    pass
+        return SAFE_FALLBACK, []                          # tool calls from a rule-breaking reply are discarded too
 
     # ---- memory ---------------------------------------------------------------------------
     def _retrieve(self, utterance: str) -> list[dict]:
