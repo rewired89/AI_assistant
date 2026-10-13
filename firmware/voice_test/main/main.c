@@ -31,6 +31,7 @@
 #include "freertos/ringbuf.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "face.h"
 
 static const char *TAG = "nt_voice";
 extern const char ca_pem_start[] asm("_binary_ca_pem_start");
@@ -124,7 +125,7 @@ static void send_signed(esp_websocket_client_handle_t c, const char *type, const
 
 static void send_hello(esp_websocket_client_handle_t c)
 {
-    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.3\",\"protocol_versions\":[1],\"recovered_state\":false}");
+    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.4\",\"protocol_versions\":[1],\"recovered_state\":false}");
 }
 
 // ---- incoming: verify first, act second. Anything that fails a check is dropped silently (counted, never answered).
@@ -566,6 +567,29 @@ static void cmd_audio_stop_playback(const char *mid, cJSON *p)
     reply_completed(mid);
 }
 
+
+// ---- animations (the face) ----
+static void anim_finished(const char *name, const char *cmd, bool interrupted)
+{
+    char p[160];
+    snprintf(p, sizeof p, "{\"interrupted\":%s,\"name\":\"%s\"}", interrupted ? "true" : "false", name);
+    send_signed(g_ws, "animation.finished", "afin", p);
+    reply_completed(cmd);
+}
+static void cmd_animation_play(const char *mid, cJSON *p)
+{
+    cJSON *name = cJSON_GetObjectItem(p, "name"), *loop = cJSON_GetObjectItem(p, "loop"), *prio = cJSON_GetObjectItem(p, "priority");
+    if (!cJSON_IsString(name) || !face_known(name->valuestring) || (loop && !cJSON_IsBool(loop)) || (prio && !int_in(prio, 0, 10))) { reply_failed(mid, "invalid_payload", "bad animation.play payload"); return; }
+    reply_accepted(mid, "animation.play");
+    if (!face_play(name->valuestring, loop && cJSON_IsTrue(loop), prio ? prio->valueint : 5, mid)) reply_failed(mid, "busy", "higher-priority animation playing");
+}
+static void cmd_animation_stop(const char *mid)
+{
+    reply_accepted(mid, "animation.stop");
+    if (!face_stop()) { reply_failed(mid, "invalid_state", "no animation playing"); return; }
+    reply_completed(mid);
+}
+
 static void cmd_audio_start_capture(const char *mid, cJSON *p)
 {
     cJSON *cid = cJSON_GetObjectItem(p, "capture_id"), *sno = cJSON_GetObjectItem(p, "stream_no"), *ms = cJSON_GetObjectItem(p, "max_seconds");
@@ -622,6 +646,8 @@ static void on_host_text(esp_websocket_client_handle_t c, const char *txt, int n
     else if (strcmp(t, "audio.stop_playback") == 0) cmd_audio_stop_playback(m, payload);
     else if (strcmp(t, "audio.start_capture") == 0) cmd_audio_start_capture(m, payload);
     else if (strcmp(t, "audio.stop_capture") == 0) cmd_audio_stop_capture(m, payload);
+    else if (strcmp(t, "animation.play") == 0) cmd_animation_play(m, payload);
+    else if (strcmp(t, "animation.stop") == 0) cmd_animation_stop(m);
     else reply_failed(m, "unsupported_command", "not implemented in this test firmware");
     cJSON_Delete(root);
 }
@@ -671,6 +697,7 @@ void app_main(void)
     i2c_master_bus_config_t ib = {.i2c_port = I2C_NUM_0, .sda_io_num = NT_I2C_SDA, .scl_io_num = NT_I2C_SCL, .clk_source = I2C_CLK_SRC_DEFAULT, .glitch_ignore_cnt = 7, .flags.enable_internal_pullup = true};
     ESP_ERROR_CHECK(i2c_new_master_bus(&ib, &bus));
     audio_init(bus);
+    face_init(anim_finished);   // screen failure is non-fatal: voice keeps working
     gpio_config_t bc = {.mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE, .pin_bit_mask = (1ULL << NT_BTN_PLUS) | (1ULL << NT_BTN_BOOT)};
     ESP_ERROR_CHECK(gpio_config(&bc));
     xTaskCreate(playback_task, "playback", 6144, NULL, 6, NULL);

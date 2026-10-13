@@ -1,0 +1,232 @@
+#include "face.h"
+#include <stdint.h>
+#include <string.h>
+#include "board_waveshare_esp32s3_lcd154.h"
+#include "driver/ledc.h"
+#include "driver/spi_master.h"
+#include "esp_heap_caps.h"
+#include "esp_lcd_panel_io.h"
+#include "esp_lcd_panel_ops.h"
+#include "esp_lcd_panel_vendor.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
+
+static const char *TAG = "nt_face";
+#define W 240
+#define H 240
+#define STRIP 20
+#define BACKLIGHT_PERCENT 30   // firmware-owned limit
+#define ANIM_MS 2500
+
+enum { EYE_NORMAL, EYE_ARCH, EYE_ANGRY, EYE_SAD };
+enum { MOUTH_NONE, MOUTH_SMILE, MOUTH_LINE, MOUTH_OPEN, MOUTH_FROWN, MOUTH_TALK };
+typedef struct { const char *name; uint8_t eye, rx, ry, mouth; int8_t dx, dy; bool cheeks, gray; } look_t;
+
+static const look_t LOOKS[] = {
+    {"idle", EYE_NORMAL, 20, 30, MOUTH_SMILE, 0, 0, false, false},
+    {"calm", EYE_NORMAL, 20, 28, MOUTH_LINE, 0, 0, false, false},
+    {"happy", EYE_ARCH, 24, 26, MOUTH_SMILE, 0, 0, false, false},
+    {"excited", EYE_NORMAL, 24, 34, MOUTH_OPEN, 0, -4, false, false},
+    {"celebratory", EYE_ARCH, 24, 26, MOUTH_OPEN, 0, 0, true, false},
+    {"affectionate", EYE_ARCH, 22, 24, MOUTH_SMILE, 0, 0, true, false},
+    {"playing", EYE_NORMAL, 20, 30, MOUTH_OPEN, 0, 0, false, false},
+    {"curious", EYE_NORMAL, 22, 32, MOUTH_LINE, 8, -8, false, false},
+    {"confused", EYE_NORMAL, 18, 24, MOUTH_LINE, -6, 0, false, false},
+    {"surprised", EYE_NORMAL, 26, 34, MOUTH_OPEN, 0, -6, false, false},
+    {"thinking", EYE_NORMAL, 18, 26, MOUTH_LINE, 12, -12, false, false},
+    {"listening", EYE_NORMAL, 22, 34, MOUTH_NONE, 0, 0, false, false},
+    {"talking", EYE_NORMAL, 20, 30, MOUTH_TALK, 0, 0, false, false},
+    {"eating", EYE_ARCH, 22, 24, MOUTH_TALK, 0, 0, false, false},
+    {"sad", EYE_SAD, 20, 28, MOUTH_FROWN, 0, 6, false, false},
+    {"angry", EYE_ANGRY, 22, 28, MOUTH_LINE, 0, 0, false, false},
+    {"sleepy", EYE_NORMAL, 22, 9, MOUTH_NONE, 0, 8, false, false},
+    {"sleeping", EYE_NORMAL, 22, 3, MOUTH_NONE, 0, 10, false, false},
+    {"waking", EYE_NORMAL, 22, 15, MOUTH_NONE, 0, 6, false, false},
+    {"reflective", EYE_NORMAL, 20, 12, MOUTH_SMILE, 0, 10, false, false},
+    {"offline", EYE_NORMAL, 20, 3, MOUTH_NONE, 0, 6, false, true},
+};
+#define NLOOKS ((int)(sizeof LOOKS / sizeof LOOKS[0]))
+
+static esp_lcd_panel_handle_t g_panel;
+static uint16_t *g_buf;
+static bool g_ok;
+static face_finished_cb g_cb;
+static SemaphoreHandle_t g_mu;
+// animation state, guarded by g_mu
+static int g_look = 0;                 // index into LOOKS
+static bool g_active, g_loop;
+static int g_prio;
+static char g_cmd[65];
+static int64_t g_ends_us;
+
+static uint16_t c565(uint8_t r, uint8_t g, uint8_t b)
+{
+    uint16_t v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+    return (uint16_t)((v >> 8) | (v << 8));   // the panel expects the high byte first
+}
+
+static int find_look(const char *name)
+{
+    for (int i = 0; i < NLOOKS; i++) if (strcmp(LOOKS[i].name, name) == 0) return i;
+    return -1;
+}
+bool face_known(const char *name) { return name && find_look(name) >= 0; }
+
+static inline bool in_ell(int dx, int dy, int rx, int ry)
+{
+    if (rx < 1 || ry < 1) return false;
+    return dx * dx * ry * ry + dy * dy * rx * rx <= rx * rx * ry * ry;
+}
+
+typedef struct { const look_t *l; int ry; int mouth_ry; } frame_t;
+
+static bool eye_px(const frame_t *f, int x, int y, int cx, bool left)
+{
+    const look_t *l = f->l;
+    int ex = x - cx - l->dx, ey = y - (100 + l->dy);
+    int rx = l->rx, ry = f->ry;
+    if (l->eye == EYE_ARCH) return in_ell(ex, ey, rx, ry) && !in_ell(ex, ey, rx - 8, ry - 8) && ey <= 6;
+    if (!in_ell(ex, ey, rx, ry)) return false;
+    int top = ey + ry, side = left ? ex + rx : rx - ex;   // distance from top edge, from the outer edge
+    if (l->eye == EYE_ANGRY && top * 2 < side) return false;
+    if (l->eye == EYE_SAD && top * 2 < (2 * rx - side)) return false;
+    return true;
+}
+
+static uint16_t px(const frame_t *f, int x, int y)
+{
+    static const uint16_t BG = 0, WHITE = 0xFFFF;
+    const look_t *l = f->l;
+    uint16_t eye = l->gray ? c565(110, 120, 128) : c565(235, 242, 246), pink = c565(244, 139, 182);
+    (void)WHITE;
+    if (eye_px(f, x, y, 80, true) || eye_px(f, x, y, 160, false)) return eye;
+    int mx = x - 120, my = y - 180;
+    switch (l->mouth) {
+    case MOUTH_SMILE: if (in_ell(mx, my, 24, 12) && !in_ell(mx, my, 24 - 5, 12 - 5) && my >= 0) return pink; break;
+    case MOUTH_FROWN: if (in_ell(mx, my + 8, 24, 12) && !in_ell(mx, my + 8, 24 - 5, 12 - 5) && my + 8 <= 0) return pink; break;
+    case MOUTH_LINE: if (mx > -16 && mx < 16 && my >= -2 && my <= 2) return pink; break;
+    case MOUTH_OPEN: if (in_ell(mx, my, 14, 12)) return pink; break;
+    case MOUTH_TALK: if (in_ell(mx, my, 16, f->mouth_ry)) return pink; break;
+    default: break;
+    }
+    if (l->cheeks && (in_ell(x - 40, y - 150, 14, 8) || in_ell(x - 200, y - 150, 14, 8))) return pink;
+    return BG;
+}
+
+static void draw(const frame_t *f)
+{
+    for (int y0 = 0; y0 < H; y0 += STRIP) {
+        for (int y = 0; y < STRIP; y++)
+            for (int x = 0; x < W; x++) g_buf[y * W + x] = px(f, x, y0 + y);
+        esp_lcd_panel_draw_bitmap(g_panel, 0, y0, W, y0 + STRIP, g_buf);
+    }
+}
+
+static void finish_cb(const char *name, const char *cmd, bool interrupted)
+{
+    if (g_cb && cmd[0]) g_cb(name, cmd, interrupted);
+}
+
+static void face_task(void *arg)
+{
+    int last_key = -1;
+    int64_t start = esp_timer_get_time();
+    for (;;) {
+        int64_t now = esp_timer_get_time();
+        char done_name[24] = "", done_cmd[65] = "";
+        xSemaphoreTake(g_mu, portMAX_DELAY);
+        if (g_active && !g_loop && now >= g_ends_us) {          // a one-shot animation ran its course: return to idle
+            strncpy(done_name, LOOKS[g_look].name, sizeof done_name - 1);
+            strncpy(done_cmd, g_cmd, sizeof done_cmd - 1);
+            g_active = false;
+            g_cmd[0] = 0;
+            g_look = 0;
+        }
+        int look = g_look;
+        xSemaphoreGive(g_mu);
+        if (done_cmd[0]) finish_cb(done_name, done_cmd, false);
+
+        int t_ms = (int)((now - start) / 1000);
+        bool blink = (t_ms % 4200) < 140;
+        int talk = (t_ms / 160) % 4;                            // 0..3 mouth opening cycle
+        const look_t *l = &LOOKS[look];
+        frame_t f = {.l = l, .ry = (blink && l->ry > 12 && l->eye != EYE_ARCH) ? 3 : l->ry,
+                     .mouth_ry = (const int[]){3, 9, 14, 9}[talk]};
+        int key = look * 100 + (f.ry == 3 && l->ry > 12 ? 1 : 0) + ((l->mouth == MOUTH_TALK) ? 10 + talk : 0);
+        if (key != last_key) {
+            draw(&f);
+            last_key = key;
+        }
+        vTaskDelay(pdMS_TO_TICKS(60));
+    }
+}
+
+bool face_init(face_finished_cb cb)
+{
+    g_cb = cb;
+    g_mu = xSemaphoreCreateMutex();
+    spi_bus_config_t bus = {.sclk_io_num = NT_LCD_SCLK, .mosi_io_num = NT_LCD_MOSI, .miso_io_num = -1, .quadwp_io_num = -1, .quadhd_io_num = -1, .max_transfer_sz = W * STRIP * 2};
+    if (spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO) != ESP_OK) { ESP_LOGE(TAG, "spi bus failed"); return false; }
+    esp_lcd_panel_io_handle_t io = NULL;
+    esp_lcd_panel_io_spi_config_t io_cfg = {.cs_gpio_num = NT_LCD_CS, .dc_gpio_num = NT_LCD_DC, .spi_mode = 3, .pclk_hz = 40 * 1000 * 1000, .trans_queue_depth = 10, .lcd_cmd_bits = 8, .lcd_param_bits = 8};
+    if (esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST, &io_cfg, &io) != ESP_OK) { ESP_LOGE(TAG, "panel io failed"); return false; }
+    esp_lcd_panel_dev_config_t pc = {.reset_gpio_num = NT_LCD_RST, .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB, .bits_per_pixel = 16};
+    if (esp_lcd_new_panel_st7789(io, &pc, &g_panel) != ESP_OK) { ESP_LOGE(TAG, "panel failed"); return false; }
+    esp_lcd_panel_reset(g_panel);
+    esp_lcd_panel_init(g_panel);
+    esp_lcd_panel_invert_color(g_panel, true);
+    esp_lcd_panel_disp_on_off(g_panel, true);
+    g_buf = heap_caps_malloc(W * STRIP * 2, MALLOC_CAP_DMA);
+    if (!g_buf) { ESP_LOGE(TAG, "no DMA buffer"); return false; }
+    ledc_timer_config_t t = {.speed_mode = LEDC_LOW_SPEED_MODE, .duty_resolution = LEDC_TIMER_10_BIT, .timer_num = LEDC_TIMER_0, .freq_hz = 5000, .clk_cfg = LEDC_AUTO_CLK};
+    ledc_timer_config(&t);
+    ledc_channel_config_t c = {.gpio_num = NT_LCD_BL, .speed_mode = LEDC_LOW_SPEED_MODE, .channel = LEDC_CHANNEL_0, .timer_sel = LEDC_TIMER_0, .duty = (BACKLIGHT_PERCENT * 1023) / 100, .hpoint = 0};
+    ledc_channel_config(&c);
+    g_ok = true;
+    xTaskCreate(face_task, "face", 6144, NULL, 3, NULL);
+    ESP_LOGI(TAG, "face ready");
+    return true;
+}
+
+bool face_play(const char *name, bool loop, int priority, const char *cmd_id)
+{
+    int i = name ? find_look(name) : -1;
+    if (!g_ok || i < 0) return false;
+    char prev_name[24] = "", prev_cmd[65] = "";
+    xSemaphoreTake(g_mu, portMAX_DELAY);
+    if (g_active && g_prio > priority) { xSemaphoreGive(g_mu); return false; }
+    if (g_active && g_cmd[0]) {
+        strncpy(prev_name, LOOKS[g_look].name, sizeof prev_name - 1);
+        strncpy(prev_cmd, g_cmd, sizeof prev_cmd - 1);
+    }
+    g_look = i;
+    g_active = true;
+    g_loop = loop;
+    g_prio = priority;
+    strncpy(g_cmd, cmd_id, sizeof g_cmd - 1);
+    g_cmd[sizeof g_cmd - 1] = 0;
+    g_ends_us = esp_timer_get_time() + (int64_t)ANIM_MS * 1000;
+    xSemaphoreGive(g_mu);
+    if (prev_cmd[0]) finish_cb(prev_name, prev_cmd, true);
+    return true;
+}
+
+bool face_stop(void)
+{
+    char name[24] = "", cmd[65] = "";
+    xSemaphoreTake(g_mu, portMAX_DELAY);
+    bool had = g_active;
+    if (had) {
+        strncpy(name, LOOKS[g_look].name, sizeof name - 1);
+        strncpy(cmd, g_cmd, sizeof cmd - 1);
+        g_active = false;
+        g_cmd[0] = 0;
+        g_look = 0;
+    }
+    xSemaphoreGive(g_mu);
+    if (had) finish_cb(name, cmd, true);
+    return had;
+}

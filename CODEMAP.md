@@ -82,7 +82,9 @@
 | `species/ninetales/growth.yaml` | Needs rates, event effects, daily caps, stage requirements |
 | `docs/` | architecture, decisions, hardware (unknowns), boundary, protocol, security, privacy, psychology-design, roadmap |
 | `tests/` | pytest suites: protocol, firmware (simulated), companion |
-| `firmware/`, `assets/`, `companion/{speech,conversation,psychology}` | Empty placeholders (.gitkeep) |
+| `firmware/{screen_test,input_test,audio_test,power_probe,net_test,voice_test}` | Real-board test firmware (ESP-IDF, bash only); voice_test = current device firmware incl. `main/face.c` (procedural face) and `partitions.csv` |
+| `tools/fw_config.py`, `tools/deploy.py` | Copy device key into a firmware project; deploy kit incl. set-stt/set-tts |
+| `assets/`, `companion/{speech,conversation,psychology}` | Empty placeholders (.gitkeep) |
 
 - `assets/sprites/{egg,baby}.json` + `source_egg|source_baby/`: stage sprite sets; `tools/desk_view.py` `ViewServer.sprite_doc(stage)` / `STAGE_FILES` picks one. `docs/your-checklist.md`: mic test and board arrival steps.
 - `companion/speech/denoise.py`: `Denoiser` (streaming spectral gating), `DenoisedMic` wrapper used by `tools/desk_robot.py`.
