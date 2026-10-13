@@ -90,3 +90,18 @@ def test_voice_firmware_capture_frame_header_matches_the_host_parser():
     assert (f.kind, f.stream_no, f.seq, f.flags, f.codec, len(f.payload)) == (aud.KIND_CAPTURE, 0x1234, 7, 0, aud.CODEC_PCM16, 1920)
     end = aud.unpack(bytes([1, 1, 0x12, 0x34, 0, 0, 0, 8, 1, 0, 0, 0]))
     assert end.end and end.payload == b""
+
+
+def test_deploy_set_stt_changes_only_the_stt_block(tmp_path):
+    import yaml
+    from tools.deploy import main, set_stt
+    cfg = tmp_path / "companion.yaml"
+    cfg.write_text(yaml.safe_dump({"species": "ninetales", "stt": {"engine": "none"}, "tts": {"engine": "espeak"}}))
+    model = tmp_path / "m"
+    model.mkdir()
+    (model / "model.bin").write_bytes(b"x")
+    assert main(["set-stt", "--config", str(cfg), "--model", str(model)]) == 0
+    out = yaml.safe_load(cfg.read_text())
+    assert out["stt"] == {"engine": "whisper", "model": str(model.resolve())} and out["tts"] == {"engine": "espeak"} and out["species"] == "ninetales"
+    with pytest.raises(ValueError):
+        set_stt(cfg, tmp_path / "missing")

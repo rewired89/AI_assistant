@@ -77,6 +77,18 @@ WantedBy=multi-user.target
     return {"dir": dir_, "config": cfg_path, "unit": unit, "bundle": bundle_path, "ca": pki["ca_cert"]}
 
 
+def set_stt(config: Path, model: Path) -> None:
+    """Turn speech recognition on in an existing companion.yaml, pointing at a downloaded Whisper model folder. Changes nothing else."""
+    model = model.expanduser().resolve()
+    if not (model.is_dir() and any(model.iterdir())):
+        raise ValueError(f"{model} is not a downloaded model folder (run: python -m tools.fetch_models whisper --size base.en --out models/whisper-base.en)")
+    cfg = yaml.safe_load(config.read_text())
+    if not isinstance(cfg, dict):
+        raise ValueError(f"{config} is not a companion config")
+    cfg["stt"] = {"engine": "whisper", "model": str(model)}
+    config.write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -90,7 +102,18 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--stt-model")
     i.add_argument("--tts-model")
     i.add_argument("--voice", default="af_heart")
+    t = sub.add_parser("set-stt", help="switch her speech recognition (ears) on in an existing config")
+    t.add_argument("--config", required=True)
+    t.add_argument("--model", required=True, help="the folder made by `python -m tools.fetch_models whisper`")
     a = ap.parse_args(argv)
+    if a.cmd == "set-stt":
+        try:
+            set_stt(Path(a.config), Path(a.model))
+        except (ValueError, OSError, yaml.YAMLError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        print(f"Speech recognition is now ON in {a.config} (model {Path(a.model).expanduser().resolve()}). Restart the companion for it to take effect.")
+        return 0
     try:
         p = build(Path(a.dir), a.host_ip, a.device_id, a.species, a.llm_model, a.stt_model, a.tts_model, a.voice, hostname=a.hostname)
     except (ValueError, FileExistsError, OSError) as e:
