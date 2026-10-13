@@ -261,6 +261,7 @@ class Companion:
         self.console_out = print
         self.console_verbose = False                                   # dev console: also print the pipeline's step names (never what was said)
         self._notes_seen = 0
+        self._last_note_t = time.monotonic()
 
     def _make_stt(self) -> SpeechRecognizer:
         if self.cfg.stt.get("engine") == "whisper":
@@ -304,8 +305,10 @@ class Companion:
     def _console_notes(self) -> None:
         total = self.pipeline.notes_total
         new = min(total - self._notes_seen, len(self.pipeline.log))
+        now = time.monotonic()
         for state, note in list(self.pipeline.log)[len(self.pipeline.log) - new:] if new > 0 else []:
-            self.console_out(f"[{state}] {note}")
+            self.console_out(f"[+{now - self._last_note_t:.1f}s] [{state}] {note}")
+            self._last_note_t = now
         self._notes_seen = total
 
     def step(self) -> None:
@@ -374,6 +377,7 @@ def main(argv: list[str] | None = None) -> int:
         app.console_verbose = True
         if a.show_heard:
             app.pipeline.on_heard = lambda text: print(f"[heard] {text!r}")
+            app.pipeline.on_reply = lambda reply: print(f"[replied] {reply.text!r}")
         if a.save_audio:
             import array
             import math

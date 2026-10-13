@@ -202,7 +202,7 @@ static bool safe_ident(const char *s)
 #define RATE 16000
 #define OUT_VOLUME_MAX 90      // hard cap on the codec volume scale (a dB-like scale; 65 to 90 is audible on this board)
 #define MIC_GAIN_DB 30.0
-#define CAPTURE_DIGITAL_GAIN 3 // software gain on the averaged mic channels, clipped
+#define CAPTURE_DIGITAL_GAIN 2 // software gain on the averaged mic channels, clipped (3 reached full scale on the owner's unit)
 #define RING_BYTES (64 * 1024) // ~2 s of PCM16 16 kHz
 #define PREBUFFER_BYTES 4800   // 150 ms before playback starts or resumes
 #define MAX_PLAY_BYTES (30 * RATE * 2)
