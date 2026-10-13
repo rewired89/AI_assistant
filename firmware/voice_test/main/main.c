@@ -585,7 +585,7 @@ static void enter_sleep(const char *reason, time_t wake_epoch, const char *wake_
     xSemaphoreGive(g_mu);
     if (playing) finish_playback("interrupted", NULL, NULL);
     face_play("sleeping", true, 9, "");
-    face_set_backlight(5);
+    face_set_backlight(10);               // dim, but bright enough to see her sleeping colors
     char p[120];
     snprintf(p, sizeof p, "{\"reason\":\"%s\",\"wake_at\":%s}", reason, wake_at_json);
     send_signed(g_ws, "power.sleeping", "slp", p);
@@ -787,12 +787,13 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     switch (id) {
     case WEBSOCKET_EVENT_CONNECTED:
         ESP_LOGI(TAG, "wss CONNECTED: certificate check against our CA succeeded");
-        if (!g_sleeping) face_stop();   // drop the local offline face; the host sets the next one
+        if (g_sleeping) face_play("sleeping", true, 9, "");   // back online while asleep: colored sleeping fox again
+        else face_stop();                                     // drop the local offline face; the host sets the next one
         send_hello((esp_websocket_client_handle_t)arg);
         break;
     case WEBSOCKET_EVENT_DISCONNECTED:
         ESP_LOGW(TAG, "wss disconnected");
-        face_play("offline", true, 1, "");
+        face_play("offline", true, g_sleeping ? 9 : 1, "");   // gray fox: she is not connected (also while asleep)
         reset_audio_state();
         break;
     case WEBSOCKET_EVENT_DATA:

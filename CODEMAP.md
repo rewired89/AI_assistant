@@ -83,6 +83,7 @@
 | `docs/` | architecture, decisions, hardware (unknowns), boundary, protocol, security, privacy, psychology-design, roadmap |
 | `tests/` | pytest suites: protocol, firmware (simulated), companion |
 | `firmware/{screen_test,input_test,audio_test,power_probe,net_test,voice_test}` | Real-board test firmware (ESP-IDF, bash only); voice_test = current device firmware incl. `main/face.c` (procedural face) and `partitions.csv` |
+| `tools/import_sleep.py` | Puts her sleeping-pose sheet into default.json as the sleeping (colour) and offline (grey) clips |
 | `tools/sprite_bundle.py` | Packs egg/baby/adult sprite sets into build/sprites.bin for the device `sprites` partition |
 | `tools/fw_config.py`, `tools/deploy.py` | Copy device key into a firmware project; deploy kit incl. set-stt/set-tts |
 | `assets/`, `companion/{speech,conversation,psychology}` | Empty placeholders (.gitkeep) |
