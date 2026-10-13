@@ -72,9 +72,9 @@ static void audio_init(i2c_master_bus_handle_t bus)
     ESP_ERROR_CHECK(esp_codec_dev_open(out_dev, &fs));
     ESP_ERROR_CHECK(esp_codec_dev_set_out_vol(out_dev, 0));  // silent until we play
     fs.channel = 4;
-    fs.channel_mask = ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0);
+    fs.channel_mask = ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0) | ESP_CODEC_DEV_MAKE_CHANNEL_MASK(1) | ESP_CODEC_DEV_MAKE_CHANNEL_MASK(2) | ESP_CODEC_DEV_MAKE_CHANNEL_MASK(3);
     ESP_ERROR_CHECK(esp_codec_dev_open(in_dev, &fs));
-    ESP_ERROR_CHECK(esp_codec_dev_set_in_channel_gain(in_dev, ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0), MIC_GAIN_DB));
+    ESP_ERROR_CHECK(esp_codec_dev_set_in_channel_gain(in_dev, fs.channel_mask, MIC_GAIN_DB));
 }
 
 static void play(const int16_t *s, size_t samples, int vol)
@@ -116,33 +116,45 @@ static int16_t *rec;
 static void record(void)
 {
     if (!rec) rec = heap_caps_malloc(REC_BYTES, MALLOC_CAP_INTERNAL);
-    if (!rec) {
+    const size_t chunk = RATE / 10;  // 100 ms, 4 channels interleaved
+    int16_t *raw = heap_caps_malloc(chunk * 4 * 2, MALLOC_CAP_INTERNAL);
+    if (!rec || !raw) {
         ESP_LOGE(TAG, "no memory for the recording");
+        free(raw);
         return;
     }
     esp_codec_dev_set_in_gain(in_dev, MIC_GAIN_DB);
-    const size_t chunk = RATE / 10;  // 100 ms
     vTaskDelay(pdMS_TO_TICKS(300));   // let the button click die down
-    for (int k = 0; k < 3; k++) esp_codec_dev_read(in_dev, rec, chunk * 2);  // drop stale audio
-    ESP_LOGI(TAG, "recording %d s: speak now", REC_SECONDS);
-    int peak = 0;
+    for (int k = 0; k < 3; k++) esp_codec_dev_read(in_dev, raw, chunk * 4 * 2);  // drop stale audio
+    ESP_LOGI(TAG, "recording %d s: speak now, close to the board, clearly", REC_SECONDS);
+    double total[4] = {0};
     for (size_t i = 0; i < (size_t)RATE * REC_SECONDS; i += chunk) {
-        int err = esp_codec_dev_read(in_dev, rec + i, chunk * 2);
+        int err = esp_codec_dev_read(in_dev, raw, chunk * 4 * 2);
         if (err != ESP_CODEC_DEV_OK) {
             ESP_LOGE(TAG, "read error %d", err);
+            free(raw);
             return;
         }
-        double sum = 0;
-        for (size_t k = 0; k < chunk; k++) sum += (double)rec[i + k] * rec[i + k];
-        int rms = (int)sqrt(sum / chunk);
-        if (rms > peak) peak = rms;
-        char bar[41] = {0};
-        int len = rms / 150;
-        if (len > 40) len = 40;
-        memset(bar, '#', len);
-        printf("mic level %5d %s\n", rms, bar);
+        double sum[4] = {0};
+        for (size_t k = 0; k < chunk; k++) {
+            for (int c = 0; c < 4; c++) sum[c] += (double)raw[k * 4 + c] * raw[k * 4 + c];
+            rec[i + k] = (int16_t)(((int)raw[k * 4] + (int)raw[k * 4 + 1]) / 2);  // mics 1 and 2 averaged for playback
+        }
+        int r[4];
+        for (int c = 0; c < 4; c++) {
+            r[c] = (int)sqrt(sum[c] / chunk);
+            total[c] += sum[c];
+        }
+        printf("mic RMS ch0 %5d  ch1 %5d  ch2 %5d  ch3 %5d\n", r[0], r[1], r[2], r[3]);
     }
-    ESP_LOGI(TAG, "recording done, loudest 100 ms RMS = %d (silence is usually a few dozen, speech a few thousand)", peak);
+    free(raw);
+    int peak = 1;
+    for (size_t i = 0; i < (size_t)RATE * REC_SECONDS; i++) if (abs(rec[i]) > peak) peak = abs(rec[i]);
+    float gain = 20000.0f / peak;   // normalize so playback is audible, capped below
+    if (gain > 12.0f) gain = 12.0f;
+    for (size_t i = 0; i < (size_t)RATE * REC_SECONDS; i++) rec[i] = (int16_t)(rec[i] * gain);
+    ESP_LOGI(TAG, "recording done. average RMS: ch0 %d ch1 %d ch2 %d ch3 %d, playback boost x%.1f",
+             (int)sqrt(total[0] / (RATE * REC_SECONDS)), (int)sqrt(total[1] / (RATE * REC_SECONDS)), (int)sqrt(total[2] / (RATE * REC_SECONDS)), (int)sqrt(total[3] / (RATE * REC_SECONDS)), gain);
 }
 
 void app_main(void)
