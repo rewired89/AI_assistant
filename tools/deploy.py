@@ -114,6 +114,7 @@ Wants=network-online.target
 [Service]
 User={user}
 WorkingDirectory={root}
+Environment=PYTHONUNBUFFERED=1
 ExecStart={python} -m companion --config {config}
 Restart=always
 RestartSec=5
