@@ -150,3 +150,18 @@ def test_service_debug_flag_adds_the_logging_flags_only_when_asked(tmp_path):
     cfg.write_text("species: ninetales\n")
     assert "--show-heard" not in deploy.service_unit(cfg, "python", "u", tmp_path)
     assert "--console --show-heard" in deploy.service_unit(cfg, "python", "u", tmp_path, debug=True)
+
+
+def test_set_voice_changes_only_the_voice_block(tmp_path):
+    import yaml
+    import pytest
+    from tools import deploy
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(yaml.safe_dump({"species": "ninetales", "llm": {"engine": "ollama"}}))
+    out = deploy.set_voice(cfg, 6, "hey girl")
+    assert out == {"follow_up_s": 6, "wake_phrase": "hey girl"}
+    assert yaml.safe_load(cfg.read_text())["llm"] == {"engine": "ollama"}
+    deploy.set_voice(cfg, None, "")
+    assert yaml.safe_load(cfg.read_text())["voice"] == {"follow_up_s": 6, "wake_phrase": ""}
+    with pytest.raises(ValueError):
+        deploy.set_voice(cfg, 99, None)

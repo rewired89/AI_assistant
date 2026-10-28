@@ -12,6 +12,7 @@ DEFAULT_LINES = {
     "trouble_thinking": "My thoughts got tangled. Could you say that again?",
     "battery_low": "My battery is low, so I can't listen right now.",
     "mic_muted": "My microphone is muted, so I can't listen.",
+    "wake_ack": "Yes?",
 }
 
 

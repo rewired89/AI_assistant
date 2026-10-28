@@ -101,6 +101,25 @@ def set_tts(config: Path, model: Path, voice: str = "af_heart") -> None:
     config.write_text(yaml.safe_dump(cfg, sort_keys=False))
 
 
+def set_voice(config: Path, follow_up_s: float | None, wake_phrase: str | None) -> dict:
+    """Change only the hands-free settings in an existing companion.yaml: follow-up listening seconds and the wake phrase."""
+    cfg = yaml.safe_load(config.read_text())
+    if not isinstance(cfg, dict):
+        raise ValueError(f"{config} is not a companion config")
+    voice = dict(cfg.get("voice") or {})
+    if follow_up_s is not None:
+        if not 0 <= follow_up_s <= 30:
+            raise ValueError("follow-up must be between 0 and 30 seconds (0 = off)")
+        voice["follow_up_s"] = follow_up_s
+    if wake_phrase is not None:
+        if len(wake_phrase) > 40:
+            raise ValueError("the wake phrase is too long")
+        voice["wake_phrase"] = wake_phrase.strip()
+    cfg["voice"] = voice
+    config.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    return voice
+
+
 def service_unit(config: Path, python: str, user: str, root: Path, debug: bool = False) -> str:
     """A systemd unit that starts the companion at boot from a repository checkout (python -m companion needs the repo as its working folder)."""
     config, root = config.expanduser().resolve(), root.expanduser().resolve()
@@ -146,6 +165,10 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--config", required=True)
     v.add_argument("--model", required=True, help="the folder made by `python -m tools.fetch_models kokoro`")
     v.add_argument("--voice", default="af_heart", help="af_heart (default), af_sarah, af_bella, af_nicole, af_sky, af_nova, bf_emma")
+    h = sub.add_parser("set-voice", help="hands-free settings: follow-up listening and the wake phrase")
+    h.add_argument("--config", required=True)
+    h.add_argument("--follow-up", type=float, help="seconds she keeps listening after an answer (0 = off, default 8)")
+    h.add_argument("--wake-phrase", help='e.g. "hey girl" (empty string turns it off)')
     w = sub.add_parser("service", help="write a systemd unit that starts her host at boot (run from the repository folder)")
     w.add_argument("--config", required=True)
     w.add_argument("--python", default=sys.executable, help="the python of the .venv (default: the one running this command)")
@@ -153,6 +176,14 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--out", help="where to write the unit (default: next to the config)")
     w.add_argument("--debug", action="store_true", help="testing only: log what she hears and says, and what happens inside (the journal keeps it on disk)")
     a = ap.parse_args(argv)
+    if a.cmd == "set-voice":
+        try:
+            voice = set_voice(Path(a.config), a.follow_up, a.wake_phrase)
+        except (ValueError, OSError, yaml.YAMLError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        print(f"Hands-free settings in {a.config}: {voice or 'defaults'}. Restart the companion for them to take effect.")
+        return 0
     if a.cmd == "service":
         try:
             text = service_unit(Path(a.config), a.python, a.user, Path.cwd(), a.debug)

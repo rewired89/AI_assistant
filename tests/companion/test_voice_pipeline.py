@@ -373,3 +373,107 @@ def test_dev_audio_hook_gets_the_pcm_and_the_reason_and_cannot_break_the_pipelin
     r2.pipe.on_audio = lambda pcm, why: 1 / 0
     r2.utter(); r2.idle()
     assert r2.responder.heard == ["hello"]
+
+
+# ------------------------------------------------------------------ follow-up listening and the wake phrase
+def _follow_cfg(**kw):
+    return PipelineConfig(follow_up_s=3.0, follow_up_delay_s=0.2, **kw)
+
+
+def test_follow_up_listens_again_after_her_answer_without_a_button(rig, device):
+    r = rig(stt=FakeRecognizer(["what is your name", "and how old are you"]),
+            responder=ScriptedResponder([Reply("I am Nine Tails."), Reply("I am very young.")]), cfg=_follow_cfg())
+    r.utter()
+    r.run(lambda: r.pipe.state is State.LISTENING and r.pipe.stats["follow_ups"] == 1)     # no press: she opened the mic herself
+    r.mic(tone(0.8)); r.mic(silence(1.3))
+    r.run(lambda: r.responder.heard == ["what is your name", "and how old are you"])
+    assert r.pipe.stats["turns"] == 1 and r.pipe.stats["follow_ups"] >= 1
+
+
+def test_follow_up_with_nobody_talking_ends_silently(rig, device):
+    r = rig(cfg=_follow_cfg())
+    r.utter(); r.idle()
+    r.run(lambda: r.pipe.stats["follow_ups"] == 1)
+    r.run(lambda: r.pipe.stats["follow_up_silence"] == 1)
+    r.idle()
+    assert r.tts.calls == [("I am Nine Tails.", "happy")] and r.pipe.state is State.IDLE and device.capture is None
+    r.clock.advance(30); r.pipe.poll()
+    assert r.pipe.stats["follow_ups"] == 1                       # it does not keep re-opening on its own
+
+
+def test_follow_up_never_nags_when_the_microphone_is_muted(rig, device):
+    r = rig(cfg=_follow_cfg())
+    r.utter()
+    device.state["config"]["mic_enabled"] = False                # she switched the mic off after asking
+    r.idle()
+    r.run(lambda: r.pipe.stats["capture_refused"] >= 1)
+    r.idle()
+    assert [t for t, _ in r.tts.calls] == ["I am Nine Tails."]    # no "my microphone is muted" line
+
+
+def test_host_initiated_speech_does_not_open_the_microphone(rig, device):
+    r = rig(cfg=_follow_cfg())
+    assert r.pipe.speak("Time for your reminder.")
+    r.idle()
+    r.clock.advance(5); r.pipe.poll()
+    assert r.pipe.stats["follow_ups"] == 0 and device.capture is None
+
+
+def test_follow_up_is_off_unless_configured(rig, device):
+    r = rig()
+    r.utter(); r.idle()
+    r.clock.advance(5); r.pipe.poll()
+    assert r.pipe.stats["follow_ups"] == 0
+
+
+def test_wake_phrase_matching_is_loose_about_spelling_but_strict_about_position():
+    from companion.speech.wake import match_wake
+    assert match_wake("Hey, girl. What time is it?", "hey girl") == "What time is it?"
+    assert match_wake("hey gurl", "hey girl") == ""
+    assert match_wake("Okay hay girl can you hear me", "hey girl") == "can you hear me"
+    assert match_wake("tell her hey girl", "hey girl") is None
+    assert match_wake("what a nice day", "hey girl") is None
+    assert match_wake("hey", "hey girl") is None
+
+
+def test_wake_phrase_with_a_question_goes_straight_to_the_answer(rig, device):
+    r = rig(stt=FakeRecognizer(["hey girl what time is it"]), cfg=PipelineConfig(wake_phrase="hey girl"))
+    r.run(lambda: device.capture is not None)                    # listening for the phrase, no button
+    r.mic(tone(0.8)); r.mic(silence(1.3))
+    r.run(lambda: r.responder.heard == ["what time is it"])
+    r.idle()
+    assert r.pipe.stats["wake_heard"] == 1 and r.pipe.stats["turns"] == 0
+
+
+def test_speech_without_the_wake_phrase_is_dropped_and_never_answered(rig, device):
+    r = rig(stt=FakeRecognizer(["we should buy milk tomorrow"]), cfg=PipelineConfig(wake_phrase="hey girl"))
+    r.run(lambda: device.capture is not None)
+    r.mic(tone(0.8)); r.mic(silence(1.3))
+    r.run(lambda: r.pipe.stats["ambient_ignored"] == 1)
+    assert r.responder.heard == [] and r.tts.calls == [] and r.pipe.state is State.IDLE
+
+
+def test_wake_phrase_alone_gets_a_short_answer_then_she_listens(rig, device):
+    r = rig(stt=FakeRecognizer(["hey girl", "what is the weather"]),
+            cfg=PipelineConfig(wake_phrase="hey girl", follow_up_s=3.0, follow_up_delay_s=0.2))
+    r.run(lambda: device.capture is not None)
+    r.mic(tone(0.8)); r.mic(silence(1.3))
+    r.run(lambda: r.pipe.stats["follow_ups"] == 1)
+    assert r.tts.calls and r.tts.calls[0][0] == "Yes?"
+    r.mic(tone(0.8)); r.mic(silence(1.3))
+    r.run(lambda: r.responder.heard == ["what is the weather"])
+
+
+def test_wake_listening_waits_quietly_while_the_microphone_is_muted(rig, device):
+    device.state["config"]["mic_enabled"] = False
+    r = rig(cfg=PipelineConfig(wake_phrase="hey girl", wake_retry_s=5.0))
+    r.clock.advance(1); r.pipe.poll()
+    assert r.pipe.stats["ambient_refused"] == 1 and r.tts.calls == [] and device.capture is None
+
+
+def test_a_button_press_or_her_own_speech_takes_over_from_wake_listening(rig, device):
+    r = rig(cfg=PipelineConfig(wake_phrase="hey girl"))
+    r.run(lambda: device.capture is not None)
+    r.utter()                                                    # press during wake listening starts a normal turn
+    r.idle()
+    assert r.responder.heard == ["what is your name"] and r.pipe.stats["turns"] == 1

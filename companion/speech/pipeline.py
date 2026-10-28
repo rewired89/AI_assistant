@@ -24,6 +24,7 @@ from ..behavior import BehaviorEngine, to_commands
 from ..interfaces import SpeechRecognizer, SpeechSynthesizer, TransportClosed
 from .lines import DEFAULT_LINES
 from .vad import EndpointDetector
+from .wake import match_wake
 
 
 class State(Enum):
@@ -66,6 +67,10 @@ class PipelineConfig:
     max_reply_chars: int = 1200
     max_sentences: int = 8
     max_sentence_chars: int = 300
+    follow_up_s: float = 0.0        # after she answers, listen this long for you to carry on without pressing (0 = off)
+    follow_up_delay_s: float = 0.6  # let her own voice die away first
+    wake_phrase: str = ""           # e.g. "hey girl": while idle and the mic is physically on, listen for it ("" = off)
+    wake_retry_s: float = 10.0      # when the microphone is muted, look again after this long
 
 
 _SENT = re.compile(r"(?<=[.!?…])\s+")
@@ -148,6 +153,11 @@ class VoicePipeline:
         self._t_state = 0.0
         self._fut: Future | None = None
         self._speech: dict | None = None
+        self._conversation = False       # the current exchange was started by you (button, tap or wake phrase)
+        self._follow_at: float | None = None
+        self._follow_up = False          # the current LISTENING is a follow-up (no speech yet = silent end)
+        self._amb: dict | None = None    # wake-phrase listening (inside IDLE): capture, detector, pending transcript
+        self._amb_retry_at = 0.0
         client.add_listener(self._on_event)
 
     # ---- public --------------------------------------------------------------------
@@ -159,6 +169,8 @@ class VoicePipeline:
         """Host-initiated speech (onboarding prompts, proactive intents). Never opens the microphone."""
         if self.state is not State.IDLE:
             return False
+        self._conversation = False       # host-initiated speech never continues into listening
+        self._follow_at = None
         self._start_speaking(text, style, reply)
         return self.state is State.SPEAKING
 
@@ -241,7 +253,24 @@ class VoicePipeline:
         else:
             self._stop_animation()
 
+    def _abort_ambient(self) -> None:
+        amb, self._amb = self._amb, None
+        if not amb:
+            return
+        if amb["fut"] is not None:
+            amb["fut"].cancel()
+        cap = amb["cap"]
+        if not cap.done:
+            try:
+                self.client.stop_capture(cap, timeout_s=3.0)
+            except Exception:
+                pass
+        self.client.captures.pop(cap.stream_no, None)
+
     def _abort_all(self, keep_state: bool = False) -> None:
+        self._abort_ambient()
+        self._follow_at = None
+        self._follow_up = False
         if self._fut:
             self._fut.cancel()
             self._fut = None
@@ -265,23 +294,105 @@ class VoicePipeline:
     # ---- IDLE -----------------------------------------------------------------------
     def _poll_idle(self, presses: int) -> None:
         if presses:
-            self._begin_listen()
+            self._follow_at = None
+            return self._begin_listen()
+        now = self.clock()
+        if self._follow_at is not None:
+            if now >= self._follow_at:
+                self._follow_at = None
+                self._begin_listen(follow_up=True)
+            return
+        if self.cfg.wake_phrase:
+            self._poll_ambient(now)
 
-    def _begin_listen(self) -> None:
+    def _begin_listen(self, follow_up: bool = False) -> None:
+        self._abort_ambient()
         try:
             cap = self.client.start_capture(max_seconds=self.cfg.max_listen_s)
         except CommandRejected as e:
-            key = {"unsafe": "battery_low", "not_allowed": "mic_muted"}.get(e.code)
             self.stats["capture_refused"] += 1
             self._note(f"capture_refused:{e.code}")
+            if follow_up:                      # a follow-up is a bonus: never nag about a muted microphone
+                self._conversation = False
+                return
+            key = {"unsafe": "battery_low", "not_allowed": "mic_muted"}.get(e.code)
             if key:
                 self._start_speaking(self.lines[key], "calm")   # the device decided; we just explain
             return
         self._cap, self._fed = cap, 0
+        self._follow_up = follow_up
         self._det = EndpointDetector(self.cfg.vad_threshold, self.cfg.min_speech_s, self.cfg.trailing_silence_s)
         self._set(State.LISTENING)
-        self.stats["turns"] += 1
+        if follow_up:
+            self.stats["follow_ups"] += 1
+        else:
+            self._conversation = True
+            self.stats["turns"] += 1
         self._animate("listening_start")
+
+    # ---- wake phrase (inside IDLE) ------------------------------------------------------
+    def _poll_ambient(self, now: float) -> None:
+        """While idle, with the microphone physically on, listen in short windows. Speech that does not start with the wake
+        phrase is transcribed here, on this machine, and dropped on the spot: nothing is kept or acted on."""
+        amb = self._amb
+        if amb is None:
+            if now < self._amb_retry_at:
+                return
+            try:
+                cap = self.client.start_capture(max_seconds=30)
+            except CommandRejected:
+                self.stats["ambient_refused"] += 1
+                self._amb_retry_at = now + self.cfg.wake_retry_s
+                return
+            self._amb = {"cap": cap, "det": EndpointDetector(self.cfg.vad_threshold, self.cfg.min_speech_s, self.cfg.trailing_silence_s),
+                         "fed": 0, "fut": None, "t0": now}
+            return
+        if amb["fut"] is not None:
+            if not amb["fut"].done():
+                if now - amb["t0"] > self.cfg.stt_timeout_s:
+                    self._abort_ambient()
+                return
+            fut, self._amb = amb["fut"], None
+            try:
+                text = clean_transcript(fut.result(), self.cfg.max_utterance_chars)
+            except Exception:
+                self.stats["stt_errors"] += 1
+                return
+            return self._on_ambient_text(text)
+        cap, det = amb["cap"], amb["det"]
+        for chunk in cap.chunks[amb["fed"]:]:
+            det.feed(chunk)
+        amb["fed"] = len(cap.chunks)
+        if not (det.endpoint or cap.done):
+            return
+        if not cap.done:
+            self.client.stop_capture(cap, timeout_s=3.0)
+            for chunk in cap.chunks[amb["fed"]:]:
+                det.feed(chunk)
+        pcm = cap.pcm
+        self.client.captures.pop(cap.stream_no, None)
+        if det.enough_speech and not cap.corrupt:
+            amb["fut"], amb["t0"] = self._pool.submit(self.stt.transcribe, pcm), now
+        else:
+            self._amb = None             # nothing said: open the next window straight away
+
+    def _on_ambient_text(self, text: str) -> None:
+        rest = match_wake(text, self.cfg.wake_phrase) if text else None
+        if rest is None:
+            self.stats["ambient_ignored"] += 1
+            return
+        self.stats["wake_heard"] += 1
+        self._note("wake_phrase")
+        self._conversation = True
+        if len(rest.split()) >= 2:       # "hey girl what time is it": the rest is the question
+            if self.on_heard is not None:
+                try:
+                    self.on_heard(rest)
+                except Exception:
+                    pass
+            self._animate("thinking")
+            return self._route(rest)
+        self._start_speaking(self.lines["wake_ack"], "normal")   # just her name: answer, then listen (follow-up)
 
     # ---- LISTENING ------------------------------------------------------------------
     def _poll_listening(self, presses: int) -> None:
@@ -289,15 +400,26 @@ class VoicePipeline:
         for chunk in cap.chunks[self._fed:]:
             det.feed(chunk)
         self._fed = len(cap.chunks)
-        why = ("button" if presses else "device" if cap.done else "silence" if det.endpoint
-               else "overtime" if self._timed_out(self.cfg.max_listen_s + 3) else None)
+        if self._follow_up and not det.has_speech:
+            why = "follow_up_over" if (presses or cap.done or self._timed_out(self.cfg.follow_up_s)) else None
+        else:
+            why = ("button" if presses else "device" if cap.done else "silence" if det.endpoint
+                   else "overtime" if self._timed_out(self.cfg.max_listen_s + 3) else None)
         if why:
             self._finish_listen(why)
 
     def _finish_listen(self, why: str) -> None:
         cap, det = self._cap, self._det
+        follow, self._follow_up = self._follow_up, False
         if not cap.done:
             self.client.stop_capture(cap, timeout_s=3.0)
+        if why == "follow_up_over":      # she waited, nobody spoke: the exchange is over, silently
+            self.client.captures.pop(cap.stream_no, None)
+            self._cap = self._det = None
+            self._note("listen_end:follow_up_over")
+            self.stats["follow_up_silence"] += 1
+            self._conversation = False
+            return self._to_idle()
         for chunk in cap.chunks[self._fed:]:
             det.feed(chunk)
         pcm, corrupt = cap.pcm, cap.corrupt
@@ -314,6 +436,9 @@ class VoicePipeline:
             self._start_speaking(self.lines["trouble_hearing"], "calm")
         elif not det.enough_speech:
             self.stats["no_speech"] += 1
+            if follow:
+                self._conversation = False
+                return self._to_idle()
             self._start_speaking(self.lines["didnt_hear"], "calm")
         else:
             self._fut = self._pool.submit(self.stt.transcribe, pcm)
@@ -447,10 +572,13 @@ class VoicePipeline:
             sp["i"] += 1
             sp["job"] = None
             if sp["i"] >= len(sp["sentences"]):
-                reply = sp.get("reply")
+                reply, convo = sp.get("reply"), self._conversation
                 self._to_idle()
                 if reply is not None:
                     self._finish_reply(reply)
+                if (self.cfg.follow_up_s > 0 and convo and not self._device_sleeping
+                        and not (reply is not None and reply.after_speech)):
+                    self._follow_at = self.clock() + self.cfg.follow_up_delay_s
                 return
             sp["tts"], sp["next_tts"] = sp["next_tts"], None
             self._t_state = self.clock()

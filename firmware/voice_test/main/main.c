@@ -125,7 +125,7 @@ static void send_signed(esp_websocket_client_handle_t c, const char *type, const
 
 static void send_hello(esp_websocket_client_handle_t c)
 {
-    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.6\",\"protocol_versions\":[1],\"recovered_state\":false}");
+    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.7\",\"protocol_versions\":[1],\"recovered_state\":false}");
 }
 
 // ---- incoming: verify first, act second. Anything that fails a check is dropped silently (counted, never answered).
@@ -865,14 +865,17 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_websocket_client_start(g_ws));
     ESP_LOGI(TAG, "ready. Microphone is MUTED. +/KEY unmutes or mutes the microphone (only the physical button can unmute). BOOT/- is push-to-talk.");
 
-    bool prev_plus = false, prev_main = false, prev_pwr = false, prev_touch = false;
-    int64_t last_touch_event_us = 0;
+    bool prev_plus = false, prev_main = false, prev_pwr = false, prev_touch = false, touch_used = false;
+    int64_t last_touch_event_us = 0, touch_t0 = 0;
     for (;;) {
         bool plus = gpio_get_level(NT_BTN_PLUS) == 0, main_btn = gpio_get_level(NT_BTN_BOOT) == 0, pwr = gpio_get_level(NT_BTN_PWR) == 0;
         bool touch = touch_down();
         if (g_sleeping) {
             // asleep: any physical touch or button wakes her (the buttons do nothing else), or the timed wake arrives
-            if ((plus && !prev_plus) || (main_btn && !prev_main) || (pwr && !prev_pwr) || (touch && !prev_touch)) exit_sleep("button");
+            if ((plus && !prev_plus) || (main_btn && !prev_main) || (pwr && !prev_pwr) || (touch && !prev_touch)) {
+                touch_used = true;               // the touch that woke her is not also a tap to talk
+                exit_sleep("button");
+            }
             else if (g_wake_epoch && time(NULL) >= g_wake_epoch) exit_sleep("scheduled");
         } else {
             if (pwr && !prev_pwr) enter_sleep("user_request", 0, "null");   // PWR: short press = go to sleep
@@ -886,11 +889,19 @@ void app_main(void)
                     send_signed(g_ws, "button.pressed", "btn", "{\"button\":\"main\",\"kind\":\"single\"}");
                 }
                 int64_t now_us = esp_timer_get_time();
-                if (touch && !prev_touch && now_us - last_touch_event_us > 1500000) {   // at most one touch event per 1.5 s
-                    last_touch_event_us = now_us;
-                    ESP_LOGI(TAG, "touch");
-                    face_play("happy", false, 3, "");   // instant local reaction; the host may follow with its own
-                    send_signed(g_ws, "touch.detected", "tch", "{\"zone\":\"screen\"}");
+                if (touch && !prev_touch) { touch_t0 = now_us; touch_used = false; }
+                if (touch && !touch_used && now_us - touch_t0 > 800000) {   // holding a finger on her = petting
+                    touch_used = true;
+                    if (now_us - last_touch_event_us > 1500000) {
+                        last_touch_event_us = now_us;
+                        ESP_LOGI(TAG, "touch (hold): petting");
+                        face_play("happy", false, 3, "");   // instant local reaction; the host may follow with its own
+                        send_signed(g_ws, "touch.detected", "tch", "{\"zone\":\"screen\"}");
+                    }
+                }
+                if (!touch && prev_touch && !touch_used && now_us - touch_t0 >= 40000) {   // a quick tap = push to talk, same as the left button
+                    ESP_LOGI(TAG, "tap: push to talk");
+                    send_signed(g_ws, "button.pressed", "btn", "{\"button\":\"main\",\"kind\":\"single\"}");
                 }
             }
         }

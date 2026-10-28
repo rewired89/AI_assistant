@@ -45,11 +45,11 @@ from .psychology.engine import PsychologyEngine
 from .psychology.safety import SafetyGate
 from .psychology.settings import PsychologySettings
 from .security import SecretStore
-from .speech import VoicePipeline, load_lines
+from .speech import PipelineConfig, VoicePipeline, load_lines
 from .tamagotchi import StateStore, load_rules
 
 ROOT = Path(__file__).resolve().parent.parent
-KNOWN = {"species", "user_id", "timezone", "data_dir", "device_id", "secrets", "listen", "tls", "stt", "tts", "llm", "memory", "adaptation", "webapp"}
+KNOWN = {"species", "user_id", "timezone", "data_dir", "device_id", "secrets", "listen", "tls", "stt", "tts", "llm", "memory", "adaptation", "webapp", "voice"}
 
 
 class ConfigProblem(Exception):
@@ -74,6 +74,7 @@ class AppConfig:
     memory: dict = field(default_factory=dict)
     adaptation: dict = field(default_factory=dict)
     webapp: dict = field(default_factory=dict)
+    voice: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path | str) -> "AppConfig":
@@ -104,13 +105,19 @@ class AppConfig:
                   tls_cert=path_of(tls["cert"]), tls_key=path_of(tls["key"]), data_dir=path_of(need("data_dir")),
                   user_id=str(raw.get("user_id", "her")), timezone=str(raw.get("timezone", "UTC")),
                   host=str(listen.get("host", "127.0.0.1")), port=int(listen.get("port", 8443)),
-                  stt=raw.get("stt") or {}, tts=raw.get("tts") or {}, llm=raw.get("llm") or {}, memory=raw.get("memory") or {}, adaptation=raw.get("adaptation") or {}, webapp=raw.get("webapp") or {})
+                  stt=raw.get("stt") or {}, tts=raw.get("tts") or {}, llm=raw.get("llm") or {}, memory=raw.get("memory") or {}, adaptation=raw.get("adaptation") or {}, webapp=raw.get("webapp") or {}, voice=raw.get("voice") or {})
         cfg.validate()
         return cfg
 
     def validate(self) -> None:
         if not (ROOT / "species" / self.species / "personality.yaml").exists():
             raise ConfigProblem(f"unknown species {self.species!r}")
+        vo = self.voice
+        if (not isinstance(vo, dict) or set(vo) - {"follow_up_s", "wake_phrase"}
+                or not isinstance(vo.get("follow_up_s", 8), (int, float)) or isinstance(vo.get("follow_up_s", 8), bool)
+                or not 0 <= vo.get("follow_up_s", 8) <= 30
+                or not isinstance(vo.get("wake_phrase", ""), str) or len(vo.get("wake_phrase", "")) > 40):
+            raise ConfigProblem("voice accepts only: follow_up_s (0 to 30 seconds, 0 = off, default 8) and wake_phrase (up to 40 characters, e.g. 'hey girl'; empty = off)")
         wa = self.webapp
         if not isinstance(wa, dict) or set(wa) - {"enabled", "host", "port", "hosts"} or not isinstance(wa.get("enabled", False), bool) \
                 or not isinstance(wa.get("port", 8790), int) or not isinstance(wa.get("hosts", []), list):
@@ -250,7 +257,9 @@ class Companion:
             learner=self.learner, memory_talk=self.memory_talk, insights=self.insights, checkin=self.checkin, notes_talk=self.notes_talk, remind_talk=self.remind_talk)
         self.behavior = BehaviorEngine(self.personality, self.state, clock, random.Random())
         self.pipeline = VoicePipeline(self.client, stt or self._make_stt(), tts or self._make_tts(), self.conversation, clock,
-                                      engine=self.behavior, onboarding=self.onboarding, lines=load_lines(sp))
+                                      engine=self.behavior, onboarding=self.onboarding, lines=load_lines(sp),
+                                      config=PipelineConfig(follow_up_s=float(self.cfg.voice.get("follow_up_s", 8)),
+                                                            wake_phrase=str(self.cfg.voice.get("wake_phrase", "")).strip()))
         self.director = ProactiveDirector(self.behavior, self.conversation, self.pipeline, clock, memory=self.memory,
                                           state_store=self.state_store, psychology=self.psychology, insights=self.insights,
                                           checkin=self.checkin, checkin_blocked=self.gate.recent, reminders=self.reminders, remind_talk=self.remind_talk,
