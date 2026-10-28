@@ -101,7 +101,7 @@ def set_tts(config: Path, model: Path, voice: str = "af_heart") -> None:
     config.write_text(yaml.safe_dump(cfg, sort_keys=False))
 
 
-def service_unit(config: Path, python: str, user: str, root: Path) -> str:
+def service_unit(config: Path, python: str, user: str, root: Path, debug: bool = False) -> str:
     """A systemd unit that starts the companion at boot from a repository checkout (python -m companion needs the repo as its working folder)."""
     config, root = config.expanduser().resolve(), root.expanduser().resolve()
     if not config.is_file():
@@ -115,7 +115,7 @@ Wants=network-online.target
 User={user}
 WorkingDirectory={root}
 Environment=PYTHONUNBUFFERED=1
-ExecStart={python} -m companion --config {config}
+ExecStart={python} -m companion --config {config}{' --console --show-heard' if debug else ''}
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
@@ -151,10 +151,11 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--python", default=sys.executable, help="the python of the .venv (default: the one running this command)")
     w.add_argument("--user", default=getpass.getuser())
     w.add_argument("--out", help="where to write the unit (default: next to the config)")
+    w.add_argument("--debug", action="store_true", help="testing only: log what she hears and says, and what happens inside (the journal keeps it on disk)")
     a = ap.parse_args(argv)
     if a.cmd == "service":
         try:
-            text = service_unit(Path(a.config), a.python, a.user, Path.cwd())
+            text = service_unit(Path(a.config), a.python, a.user, Path.cwd(), a.debug)
         except (ValueError, OSError) as e:
             print(f"error: {e}", file=sys.stderr)
             return 1

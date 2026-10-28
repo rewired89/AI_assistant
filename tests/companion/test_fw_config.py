@@ -142,3 +142,11 @@ def test_service_unit_runs_from_the_repo_with_the_venv_python(tmp_path):
     import pytest
     with pytest.raises(ValueError):
         deploy.service_unit(tmp_path / "nope.yaml", "python", "u", tmp_path)
+
+
+def test_service_debug_flag_adds_the_logging_flags_only_when_asked(tmp_path):
+    from tools import deploy
+    cfg = tmp_path / "companion.yaml"
+    cfg.write_text("species: ninetales\n")
+    assert "--show-heard" not in deploy.service_unit(cfg, "python", "u", tmp_path)
+    assert "--console --show-heard" in deploy.service_unit(cfg, "python", "u", tmp_path, debug=True)
