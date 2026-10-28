@@ -101,6 +101,30 @@ def set_tts(config: Path, model: Path, voice: str = "af_heart") -> None:
     config.write_text(yaml.safe_dump(cfg, sort_keys=False))
 
 
+def service_unit(config: Path, python: str, user: str, root: Path) -> str:
+    """A systemd unit that starts the companion at boot from a repository checkout (python -m companion needs the repo as its working folder)."""
+    config, root = config.expanduser().resolve(), root.expanduser().resolve()
+    if not config.is_file():
+        raise ValueError(f"{config} does not exist")
+    return f"""[Unit]
+Description=Nine Tails companion host
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+User={user}
+WorkingDirectory={root}
+ExecStart={python} -m companion --config {config}
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -121,7 +145,26 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--config", required=True)
     v.add_argument("--model", required=True, help="the folder made by `python -m tools.fetch_models kokoro`")
     v.add_argument("--voice", default="af_heart", help="af_heart (default), af_sarah, af_bella, af_nicole, af_sky, af_nova, bf_emma")
+    w = sub.add_parser("service", help="write a systemd unit that starts her host at boot (run from the repository folder)")
+    w.add_argument("--config", required=True)
+    w.add_argument("--python", default=sys.executable, help="the python of the .venv (default: the one running this command)")
+    w.add_argument("--user", default=getpass.getuser())
+    w.add_argument("--out", help="where to write the unit (default: next to the config)")
     a = ap.parse_args(argv)
+    if a.cmd == "service":
+        try:
+            text = service_unit(Path(a.config), a.python, a.user, Path.cwd())
+        except (ValueError, OSError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        out = Path(a.out) if a.out else Path(a.config).expanduser().resolve().parent / "ninetails.service"
+        out.write_text(text)
+        print(f"Wrote {out}. Install it (it then starts at every boot and restarts if it crashes):")
+        print(f"  sudo cp {out} /etc/systemd/system/ninetails.service")
+        print("  sudo systemctl daemon-reload")
+        print("  sudo systemctl enable --now ninetails")
+        print("Watch it:  journalctl -u ninetails -f      Stop it:  sudo systemctl stop ninetails")
+        return 0
     if a.cmd == "set-tts":
         try:
             set_tts(Path(a.config), Path(a.model), a.voice)

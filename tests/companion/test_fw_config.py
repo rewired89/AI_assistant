@@ -130,3 +130,15 @@ def test_sprite_bundle_roundtrips_and_fits_the_partition():
     assert len(data) <= sprite_bundle.PARTITION_SIZE
     names = [line.split(":")[0] for line in sprite_bundle.check(data)]
     assert names == ["baby", "adult"]
+
+
+def test_service_unit_runs_from_the_repo_with_the_venv_python(tmp_path):
+    from tools import deploy
+    cfg = tmp_path / "companion.yaml"
+    cfg.write_text("species: ninetales\n")
+    unit = deploy.service_unit(cfg, "/repo/.venv/bin/python", "rewired89", tmp_path)
+    assert f"WorkingDirectory={tmp_path}" in unit and f"ExecStart=/repo/.venv/bin/python -m companion --config {cfg}" in unit
+    assert "User=rewired89" in unit and "Restart=always" in unit
+    import pytest
+    with pytest.raises(ValueError):
+        deploy.service_unit(tmp_path / "nope.yaml", "python", "u", tmp_path)
