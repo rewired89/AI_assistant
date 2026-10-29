@@ -8,6 +8,7 @@ lines, never from the LLM.
 """
 from __future__ import annotations
 
+import queue
 import re
 import unicodedata
 from collections import Counter, deque
@@ -71,6 +72,7 @@ class PipelineConfig:
     follow_up_delay_s: float = 0.6  # let her own voice die away first
     wake_phrase: str = ""           # e.g. "hey girl": while idle and the mic is physically on, listen for it ("" = off)
     wake_retry_s: float = 10.0      # when the microphone is muted, look again after this long
+    stream_first_sentence: bool = False   # start speaking the first sentence while the model is still writing the rest
 
 
 _SENT = re.compile(r"(?<=[.!?…])\s+")
@@ -129,6 +131,10 @@ def split_sentences(text: str, max_sentences: int, max_chars: int) -> list[str]:
     return out[:max_sentences]
 
 
+def _plain(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
 class VoicePipeline:
     def __init__(self, client: DeviceClient, stt: SpeechRecognizer, tts: SpeechSynthesizer, responder: Responder,
                  clock: Callable[[], float], engine: BehaviorEngine | None = None, onboarding=None,
@@ -159,6 +165,9 @@ class VoicePipeline:
         self._follow_up = False          # the current LISTENING is a follow-up (no speech yet = silent end)
         self._amb: dict | None = None    # wake-phrase listening (inside IDLE): capture, detector, pending transcript
         self._amb_retry_at = 0.0
+        self._stream_q: queue.SimpleQueue = queue.SimpleQueue()   # first sentences handed over by the responder (from its worker thread)
+        if self.cfg.stream_first_sentence and hasattr(responder, "stream_hook"):
+            responder.stream_hook = self._stream_q.put
         client.add_listener(self._on_event)
 
     # ---- public --------------------------------------------------------------------
@@ -277,6 +286,9 @@ class VoicePipeline:
             self._fut.cancel()
             self._fut = None
         if self._speech:
+            st = self._speech.get("stream")
+            if st is not None:
+                st["fut"].cancel()
             job: PlaybackJob | None = self._speech.get("job")
             if job:
                 job.cancel()
@@ -508,6 +520,11 @@ class VoicePipeline:
             if not turn.passthrough:
                 spoken = " ".join(t.text for t in (turn, turn.follow_up) if t and t.text)
                 return self._start_speaking(spoken, "normal")
+        while not self._stream_q.empty():                    # nothing left over from an earlier turn
+            try:
+                self._stream_q.get_nowait()
+            except queue.Empty:
+                break
         self._fut = self._pool.submit(self.responder.respond, text)
         self._set(State.THINKING)
 
@@ -515,6 +532,20 @@ class VoicePipeline:
     def _poll_thinking(self, presses: int) -> None:
         if presses:
             return self._cancel_turn("cancelled_by_button")
+        if self.cfg.stream_first_sentence and not self._fut.done() and not self._stream_q.empty():
+            try:
+                first = self._stream_q.get_nowait()
+            except queue.Empty:
+                first = ""
+            if first:                                        # the first sentence is ready: start talking, the rest follows
+                fut, self._fut = self._fut, None
+                self._note(f"timing:first_sentence {self.clock() - self._t_state:.1f}s")
+                self._start_speaking(first, "normal", None)
+                if self._speech is not None:
+                    self._speech["stream"] = {"fut": fut, "first": first, "extended": False}
+                else:
+                    self._fut = fut
+                return
         if self._fut.done():
             fut, self._fut = self._fut, None
             self._note(f"timing:thinking {self.clock() - self._t_state:.1f}s")  # how long the language model took
@@ -570,6 +601,18 @@ class VoicePipeline:
             self.stats["interrupted"] += 1
             self._note("interrupted_by_button")
             return self._to_idle()
+        st = sp.get("stream")
+        if st is not None and not st["extended"] and st["fut"].done():
+            self._extend_stream(sp, st)
+        if sp.get("wait_more"):          # the first sentence has been said; waiting for the model to finish the rest
+            if st["extended"] or self._timed_out(self.cfg.reply_timeout_s):
+                st["extended"], sp["wait_more"] = True, False
+                if sp["i"] < len(sp["sentences"]):
+                    sp["tts"], sp["next_tts"] = self._render(sp["sentences"][sp["i"]], sp["style"]), None
+                    self._t_state = self.clock()
+                else:
+                    self._finish_speech(sp)
+            return
         if sp["job"] is None:
             fut = sp["tts"]
             if fut.done():
@@ -602,16 +645,52 @@ class VoicePipeline:
             sp["i"] += 1
             sp["job"] = None
             if sp["i"] >= len(sp["sentences"]):
-                reply, convo = sp.get("reply"), self._conversation
-                self._to_idle()
-                if reply is not None:
-                    self._finish_reply(reply)
-                if (self.cfg.follow_up_s > 0 and convo and not self._device_sleeping
-                        and not (reply is not None and reply.after_speech)):
-                    self._follow_at = self.clock() + self.cfg.follow_up_delay_s
-                return
+                if st is not None and not st["extended"]:
+                    sp["wait_more"], self._t_state = True, self.clock()
+                    return
+                return self._finish_speech(sp)
             sp["tts"], sp["next_tts"] = sp["next_tts"], None
             self._t_state = self.clock()
+
+    def _finish_speech(self, sp: dict) -> None:
+        reply, convo = sp.get("reply"), self._conversation
+        self._to_idle()
+        if reply is not None:
+            self._finish_reply(reply)
+        if (self.cfg.follow_up_s > 0 and convo and not self._device_sleeping
+                and not (reply is not None and reply.after_speech)):
+            self._follow_at = self.clock() + self.cfg.follow_up_delay_s
+
+    def _extend_stream(self, sp: dict, st: dict) -> None:
+        """The model finished while (or after) the first sentence played: queue the sentences that were not spoken yet."""
+        st["extended"] = True
+        try:
+            reply = st["fut"].result()
+            if not isinstance(reply, Reply) or not isinstance(reply.text, str):
+                raise TypeError("responder must return Reply")
+        except Exception as e:
+            self.stats["reply_errors"] += 1
+            self._note(f"reply_error:{type(e).__name__}")
+            return
+        if self.on_reply is not None:
+            try:
+                self.on_reply(reply)
+            except Exception as e:
+                self._note(f"on_reply_failed:{type(e).__name__}")
+        sp["reply"] = reply
+        if reply.style in VOICE_STYLES:
+            sp["style"] = reply.style
+        everything = plan_speech(clean_reply(reply.text[: self.cfg.max_reply_chars]), False, (), self.cfg.max_sentences,
+                                 self.cfg.max_sentence_chars)
+        first, said, rest = _plain(st["first"]), False, []
+        for item in everything:
+            if not said and isinstance(item, str) and _plain(item) == first:
+                said = True                      # already spoken: not again
+                continue
+            rest.append(item)
+        sp["sentences"].extend(rest)
+        if sp["job"] is not None and sp.get("next_tts") is None and sp["i"] + 1 < len(sp["sentences"]):
+            sp["next_tts"] = self._render(sp["sentences"][sp["i"] + 1], sp["style"])   # synthesize the next one while the first plays
 
     def _finish_reply(self, reply: Reply) -> None:
         """Runs only after the speech played to the end (a barge-in drops these on purpose).

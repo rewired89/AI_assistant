@@ -71,6 +71,34 @@ class EngineConfig:
     grounding_threshold: float = 0.7
 
 
+class _FirstSentence:
+    """Watches the model's words as they arrive and, once, hands the first COMPLETE sentence to engine.stream_hook so she can start
+    talking while the rest is still being written. Only that one sentence, and only if it passes the same checks as a full reply."""
+    END = re.compile(r"^(.+?[.!?])\s")
+
+    def __init__(self, engine: "ConversationEngine"):
+        self.e, self.buf, self.done = engine, "", False
+
+    def feed(self, piece: str) -> None:
+        if self.done:
+            return
+        self.buf += piece
+        text = self.buf.lstrip()
+        if text.startswith("{"):                              # a tool call written out as text: never speak it
+            self.done = True
+            return
+        m = self.END.match(text)
+        if not m:
+            self.done = len(text) > 400
+            return
+        self.done = True
+        raw = m.group(1)
+        spoken = speechify(raw, self.e.cfg.reply_max_chars)
+        if len(spoken) >= 3 and not violations(raw, self.e.canary) and not violations(spoken, self.e.canary):
+            self.e.stats["streamed_first_sentence"] = self.e.stats.get("streamed_first_sentence", 0) + 1
+            self.e.stream_hook(spoken)
+
+
 class ConversationEngine:
     def __init__(self, llm: LanguageModel, personality_cfg: Callable[[], dict], state: CharacterState,
                  clock: Callable[[], float], memory=None, user_name: Callable[[], str | None] = lambda: None,
@@ -91,6 +119,7 @@ class ConversationEngine:
         self._confirm: dict | None = None
         self._turn = 0
         self._last_ask_turn = -999
+        self.stream_hook = None            # set by the voice pipeline: called once with the first safe sentence while the rest is still being written
         self.stats = {"blocked_replies": 0, "rejected_tool_calls": 0, "ungrounded": 0, "proactive_llm": 0,
                       "proactive_fallback": 0}
 
@@ -158,7 +187,7 @@ class ConversationEngine:
         system = build_system_prompt(cfg, self.state.mood, self.state.relationship_state, self.state.stage,
                                      self.user_name(), hits, self.canary, now.strftime("%A %H:%M"))
         messages = [*self.history, {"role": "user", "content": utterance}]
-        text, calls = self._ask_model(system, messages)
+        text, calls = self._ask_model(system, messages, stream_ok=not SLEEP_WORDS.search(normalize(utterance)))
         actions, rejected = parse_tool_calls(calls, self.cfg.max_tool_calls)
         self.stats["rejected_tool_calls"] += rejected
         reply = Reply(text, MOOD_VOICE.get(self.state.mood, "normal"))
@@ -203,11 +232,14 @@ class ConversationEngine:
         return "conversation"
 
     # ---- model call with output validation ----------------------------------------------
-    def _ask_model(self, system: str, messages: list[dict]) -> tuple[str, list]:
+    def _ask_model(self, system: str, messages: list[dict], stream_ok: bool = False) -> tuple[str, list]:
         for attempt in (0, 1):
             extra = "" if attempt == 0 else "\nYour previous reply broke the rules. Answer again, kindly and safely."
             try:
-                out = self.llm.complete(system + extra, messages, TOOL_SPECS)
+                if attempt == 0 and stream_ok and self.stream_hook is not None and getattr(self.llm, "supports_stream", False):
+                    out = self.llm.complete(system + extra, messages, TOOL_SPECS, on_text=_FirstSentence(self).feed)
+                else:
+                    out = self.llm.complete(system + extra, messages, TOOL_SPECS)
                 raw, calls = out.get("text", ""), out.get("tool_calls") or []
                 if not isinstance(raw, str):
                     raise TypeError("text")

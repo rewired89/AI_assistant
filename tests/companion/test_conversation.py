@@ -377,3 +377,51 @@ def test_tool_call_written_as_text_is_not_spoken(clock):
     llm = FakeLanguageModel(['{"name":"request sleep","parameters{"}', "Of course, tell me more."])
     eng, _ = make(clock, llm)
     assert eng.respond("it is afternoon").text == "Of course, tell me more."
+
+
+# ------------------------------------------------------------------ streaming the first sentence
+def _stream_engine(clock, llm):
+    eng, _ = make(clock, llm)
+    got = []
+    eng.stream_hook = got.append
+    return eng, got
+
+
+def test_first_complete_sentence_is_handed_over_once_while_the_rest_is_written(clock):
+    eng, got = _stream_engine(clock, FakeLanguageModel(["It is a lovely day. I would walk outside, I think. Maybe with a friend?"]))
+    r = eng.respond("what should I do today")
+    assert got == ["It is a lovely day."] and r.text.startswith("It is a lovely day. I would walk")
+
+
+def test_nothing_is_handed_over_for_a_sleep_request_or_an_unsafe_or_tool_like_first_sentence(clock):
+    eng, got = _stream_engine(clock, FakeLanguageModel(["Sure, sleep well. See you soon."]))
+    eng.respond("please go to sleep until 7 am")
+    assert got == []
+    eng, got = _stream_engine(clock, FakeLanguageModel(["Don't leave me. Stay here.", "Okay then."]))
+    eng.respond("I'm going to bed")
+    assert got == []
+    eng, got = _stream_engine(clock, FakeLanguageModel(['{"name":"show_emotion","parameters":{}}', "Hello there. How are you?"]))
+    eng.respond("hi")
+    assert got == []
+
+
+def test_no_handover_when_the_hook_is_not_set_or_the_model_cannot_stream(clock):
+    llm = FakeLanguageModel(["One sentence. Two sentences."])
+    eng, _ = make(clock, llm)
+    eng.respond("hi")
+    assert llm.calls[0]["streamed"] is False
+    llm = FakeLanguageModel(["One sentence. Two sentences."])
+    llm.supports_stream = False
+    eng, got = _stream_engine(clock, llm)
+    eng.respond("hi")
+    assert got == [] and llm.calls[0]["streamed"] is False
+
+
+def test_ollama_streaming_reads_line_by_line_and_returns_the_same_shape(stub):
+    _Stub.raw = (b'{"message":{"content":"Hi "},"done":false}\n{"message":{"content":"there. Bye"},"done":false}\n'
+                 b'{"message":{"content":"!","tool_calls":[{"function":{"name":"show_emotion","arguments":{"name":"happy"}}}]},"done":true}\n')
+    pieces = []
+    llm = OllamaLanguageModel("tiny", base_url=stub)
+    out = llm.complete("SYS", [{"role": "user", "content": "hello"}], TOOL_SPECS, on_text=pieces.append)
+    assert _Stub.seen[0][1]["stream"] is True
+    assert pieces == ["Hi ", "there. Bye", "!"] and out["text"] == "Hi there. Bye!" and out["tool_calls"][0]["name"] == "show_emotion"

@@ -516,3 +516,95 @@ def test_wake_listening_keeps_the_microphone_open_while_it_transcribes(rig, devi
     r.run(lambda: len(r.pipe._amb["futs"]) == 2)
     gate.set()
     r.run(lambda: r.responder.heard == ["what time is it"])
+
+
+# ------------------------------------------------------------------ speaking the first sentence while the model is still writing
+class StreamingResponder(ScriptedResponder):
+    """Hands over its first sentence early (like the real engine), then takes its time."""
+    stream_hook = None
+
+    def __init__(self, first, final, gate=None, fail=None):
+        super().__init__([final])
+        self.first, self.gate, self.fail_after = first, gate, fail
+        self.finished = threading.Event()
+
+    def respond(self, utterance):
+        self.heard.append(utterance)
+        if self.stream_hook:
+            self.stream_hook(self.first)
+        if self.gate is not None:
+            self.gate.wait(10)
+        self.finished.set()
+        if self.fail_after:
+            raise self.fail_after
+        return self.replies.pop(0)
+
+
+def _streaming_rig(rig, responder, **cfg):
+    return rig(responder=responder, cfg=PipelineConfig(stream_first_sentence=True, **cfg))
+
+
+def test_first_sentence_is_spoken_before_the_model_has_finished(rig):
+    gate = threading.Event()
+    resp = StreamingResponder("Sure thing.", Reply("Sure thing. And here is the rest.", "happy"), gate)
+    r = _streaming_rig(rig, resp)
+    r.utter()
+    r.run(lambda: len(r.tts.calls) >= 1)
+    assert r.tts.calls[0][0] == "Sure thing." and not resp.finished.is_set()       # talking while the model is still working
+    gate.set()
+    r.idle()
+    assert [t for t, _ in r.tts.calls] == ["Sure thing.", "And here is the rest."]
+    assert len(r.client.playback_results) == 2 and r.pipe.state is State.IDLE
+
+
+def test_a_one_sentence_reply_is_not_said_twice(rig):
+    r = _streaming_rig(rig, StreamingResponder("Hello there.", Reply("Hello there.")))
+    r.utter(); r.idle()
+    assert [t for t, _ in r.tts.calls] == ["Hello there."]
+
+
+def test_if_the_final_text_differs_nothing_is_lost(rig):
+    gate = threading.Event()
+    r = _streaming_rig(rig, StreamingResponder("Okay, going to sleep.", Reply("Okay, I'll nap until 7:00 AM."), gate))
+    r.utter()
+    r.run(lambda: len(r.tts.calls) >= 1)
+    gate.set()
+    r.idle()
+    assert [t for t, _ in r.tts.calls] == ["Okay, going to sleep.", "Okay, I'll nap until 7:00 AM."]
+
+
+def test_a_failure_after_the_first_sentence_ends_quietly(rig):
+    gate = threading.Event()
+    r = _streaming_rig(rig, StreamingResponder("Let me think.", Reply("unused"), gate, fail=RuntimeError("model died")))
+    r.utter()
+    r.run(lambda: len(r.tts.calls) >= 1)
+    gate.set()
+    r.idle()
+    assert [t for t, _ in r.tts.calls] == ["Let me think."] and r.pipe.stats["reply_errors"] == 1 and r.pipe.state is State.IDLE
+
+
+def test_pressing_the_button_while_she_talks_stops_it_all(rig, device):
+    gate = threading.Event()
+    r = _streaming_rig(rig, StreamingResponder("Here we go.", Reply("Here we go. Plenty more to say."), gate))
+    r.utter()
+    r.run(lambda: r.pipe.state is State.SPEAKING)
+    r.press()
+    r.idle()
+    gate.set()
+    for _ in range(20):
+        r.pipe.poll(); r.clock.advance(0.1); time.sleep(0.002)
+    assert r.pipe.state is State.IDLE and [t for t, _ in r.tts.calls] == ["Here we go."]
+
+
+def test_streaming_is_off_unless_configured(rig):
+    resp = StreamingResponder("Hi.", Reply("Hi. Bye."))
+    r = rig(responder=resp)
+    assert resp.stream_hook is None
+    r.utter(); r.idle()
+    assert [t for t, _ in r.tts.calls] == ["Hi. Bye."] or [t for t, _ in r.tts.calls] == ["Hi.", "Bye."]
+
+
+def test_follow_up_listening_still_follows_a_streamed_answer(rig):
+    r = _streaming_rig(rig, StreamingResponder("Yes.", Reply("Yes. Of course.")), follow_up_s=3.0, follow_up_delay_s=0.2)
+    r.utter()
+    r.run(lambda: r.pipe.stats["follow_ups"] == 1)

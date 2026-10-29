@@ -35,6 +35,8 @@ class DeviceTransport(ABC):
 class LanguageModel(ABC):
     #: True only if prompts never leave this machine or the home network. Private reflections use no model unless True.
     is_local: bool = False
+    #: True if complete() accepts on_text, a callback given each piece of text as it is written (used to start speaking sooner).
+    supports_stream: bool = False
 
     @abstractmethod
     def complete(self, system: str, messages: list[dict], tools: list[dict] | None = None) -> dict:

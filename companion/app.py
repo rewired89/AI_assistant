@@ -113,11 +113,12 @@ class AppConfig:
         if not (ROOT / "species" / self.species / "personality.yaml").exists():
             raise ConfigProblem(f"unknown species {self.species!r}")
         vo = self.voice
-        if (not isinstance(vo, dict) or set(vo) - {"follow_up_s", "wake_phrase"}
+        if (not isinstance(vo, dict) or set(vo) - {"follow_up_s", "wake_phrase", "stream"}
                 or not isinstance(vo.get("follow_up_s", 8), (int, float)) or isinstance(vo.get("follow_up_s", 8), bool)
                 or not 0 <= vo.get("follow_up_s", 8) <= 30
-                or not isinstance(vo.get("wake_phrase", ""), str) or len(vo.get("wake_phrase", "")) > 40):
-            raise ConfigProblem("voice accepts only: follow_up_s (0 to 30 seconds, 0 = off, default 8) and wake_phrase (up to 40 characters, e.g. 'hey girl'; empty = off)")
+                or not isinstance(vo.get("wake_phrase", ""), str) or len(vo.get("wake_phrase", "")) > 40
+                or not isinstance(vo.get("stream", True), bool)):
+            raise ConfigProblem("voice accepts only: stream (true/false, default true: start speaking the first sentence early), follow_up_s (0 to 30 seconds, 0 = off, default 8) and wake_phrase (up to 40 characters, e.g. 'hey girl'; empty = off)")
         wa = self.webapp
         if not isinstance(wa, dict) or set(wa) - {"enabled", "host", "port", "hosts"} or not isinstance(wa.get("enabled", False), bool) \
                 or not isinstance(wa.get("port", 8790), int) or not isinstance(wa.get("hosts", []), list):
@@ -259,7 +260,8 @@ class Companion:
         self.pipeline = VoicePipeline(self.client, stt or self._make_stt(), tts or self._make_tts(), self.conversation, clock,
                                       engine=self.behavior, onboarding=self.onboarding, lines=load_lines(sp),
                                       config=PipelineConfig(follow_up_s=float(self.cfg.voice.get("follow_up_s", 8)),
-                                                            wake_phrase=str(self.cfg.voice.get("wake_phrase", "")).strip()))
+                                                            wake_phrase=str(self.cfg.voice.get("wake_phrase", "")).strip(),
+                                                            stream_first_sentence=bool(self.cfg.voice.get("stream", True))))
         self.director = ProactiveDirector(self.behavior, self.conversation, self.pipeline, clock, memory=self.memory,
                                           state_store=self.state_store, psychology=self.psychology, insights=self.insights,
                                           checkin=self.checkin, checkin_blocked=self.gate.recent, reminders=self.reminders, remind_talk=self.remind_talk,
