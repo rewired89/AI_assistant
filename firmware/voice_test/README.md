@@ -17,3 +17,11 @@ The 3 sprite sets (egg, baby, adult) are packed into one file and written to the
 python -m tools.sprite_bundle
 ```
 That writes `build/sprites.bin` and prints the flash command, to run in the ESP-IDF bash terminal (`python -m esptool --chip esp32s3 -p /dev/ttyACM0 write_flash 0x310000 build/sprites.bin`). The host tells the device which set to show (egg, baby or adult) from her growth stage. Without the sprites in flash the built-in eyes face is used. Flashing the new partition table (`idf.py flash`) is needed once because `partitions.csv` changed. Screen pixel colors are UNVERIFIED on the real panel.
+
+## Network setup from a phone (v0.11, written but NOT yet run on the board)
+Wi-Fi name, Wi-Fi password and the host address/port are stored in flash (NVS, namespace `ntcfg`) and set from a phone. The values compiled in through `idf.py menuconfig` stay as the fallback, so an existing board keeps working.
+- **Open setup:** hold BOTH side buttons (left and right) for 4 seconds, or wait: if Wi-Fi does not come up within 90 s of boot the setup opens by itself.
+- The screen shows 8 big digits. On a phone join the Wi-Fi network `NineTails-Setup-XXXX` using those 8 digits as the password, then open `http://192.168.4.1`, fill in the Wi-Fi name, password, the address of the computer running her host and the port (8443), press Save. The board restarts and joins.
+- PWR cancels setup; 10 minutes without saving also restarts the board.
+- The buttons and touch now work even while the Wi-Fi is down (before, the board waited for Wi-Fi forever and ignored them).
+- The host's certificate must be valid for the address typed here (`tools.deploy init --host-ip ... --hostname ...`).

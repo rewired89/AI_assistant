@@ -302,6 +302,32 @@ static void draw_sprite(const sset_t *s, const sanim_t *a, int frame)
     }
 }
 
+
+// ---------------------------------------------------------------- setup code (big digits, 3x5 font)
+static char g_code[12];
+static const uint8_t DIGIT_FONT[10][5] = {   // 3 bits per row, left bit = left pixel
+    {7, 5, 5, 5, 7}, {2, 6, 2, 2, 7}, {7, 1, 7, 4, 7}, {7, 1, 7, 1, 7}, {5, 5, 7, 1, 1},
+    {7, 4, 7, 1, 7}, {7, 4, 7, 5, 7}, {7, 1, 1, 2, 2}, {7, 5, 7, 5, 7}, {7, 5, 7, 1, 7}};
+#define CODE_SCALE 7
+static bool code_px(int x, int y)
+{
+    int n = (int)strlen(g_code), pitch = 3 * CODE_SCALE + CODE_SCALE;               // digit width plus one cell of space
+    int total = n * pitch - CODE_SCALE, x0 = (W - total) / 2, y0 = (H - 5 * CODE_SCALE) / 2;
+    if (y < y0 || y >= y0 + 5 * CODE_SCALE || x < x0 || x >= x0 + total) return false;
+    int i = (x - x0) / pitch, cx = (x - x0) % pitch;
+    if (i >= n || cx >= 3 * CODE_SCALE || g_code[i] < '0' || g_code[i] > '9') return false;
+    return (DIGIT_FONT[g_code[i] - '0'][(y - y0) / CODE_SCALE] >> (2 - cx / CODE_SCALE)) & 1;
+}
+static void draw_code(void)
+{
+    for (int y0 = 0; y0 < H; y0 += STRIP) {
+        for (int y = 0; y < STRIP; y++)
+            for (int x = 0; x < W; x++) g_buf[y * W + x] = code_px(x, y0 + y) ? c565(235, 242, 246) : 0;
+        push_strip(y0);
+    }
+}
+void face_show_code(const char *digits) { strlcpy(g_code, digits ? digits : "", sizeof g_code); }
+
 static void finish_cb(const char *name, const char *cmd, bool interrupted)
 {
     if (g_cb && cmd[0]) g_cb(name, cmd, interrupted);
@@ -325,6 +351,11 @@ static void face_task(void *arg)
         int look = g_look;
         xSemaphoreGive(g_mu);
         if (done_cmd[0]) finish_cb(done_name, done_cmd, false);
+        if (g_code[0]) {                                   // setup hotspot password on screen: nothing else is drawn
+            if (last_key != -2) { draw_code(); last_key = -2; }
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
 
         static int last_look = -1;
         static int64_t look_t0;

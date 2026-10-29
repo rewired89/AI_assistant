@@ -16,3 +16,4 @@ void face_set_backlight(int percent);     // clamped to 0..30 by the firmware; t
 // (written once with tools/sprite_bundle.py). Without that partition, or for a missing animation, the built-in face is used.
 bool face_set_sprites(const char *set);       // "egg", "baby" or "adult"; false if that set is not in flash
 void face_set_mic(int state);              // -1 unknown (nothing drawn), 0 muted (grey microphone with a pink slash), 1 listening allowed (white microphone)
+void face_show_code(const char *digits);    // full-screen digits (the setup hotspot password); shown until the board restarts

@@ -18,6 +18,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "nvs_flash.h"
+#include "nvs.h"
+#include "esp_http_server.h"
+#include "esp_mac.h"
+#include "esp_system.h"
 #include <math.h>
 #include <stdlib.h>
 #include "board_waveshare_esp32s3_lcd154.h"
@@ -79,6 +83,7 @@ static bool load_key(uint8_t key[32])
 // Builds, signs and sends one message. payload_sorted must be a JSON object text whose keys are ALREADY in sorted order (we write them by hand).
 static void send_signed(esp_websocket_client_handle_t c, const char *type, const char *id_prefix, const char *payload_sorted)
 {
+    if (!c) return;                       // not connected yet (the main loop starts before the network does)
     uint8_t key[32];
     if (!load_key(key)) return;
     char nonce[25], mid[17];
@@ -125,7 +130,7 @@ static void send_signed(esp_websocket_client_handle_t c, const char *type, const
 
 static void send_hello(esp_websocket_client_handle_t c)
 {
-    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.10\",\"protocol_versions\":[1],\"recovered_state\":false}");
+    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.11\",\"protocol_versions\":[1],\"recovered_state\":false}");
 }
 
 // ---- incoming: verify first, act second. Anything that fails a check is dropped silently (counted, never answered).
@@ -812,6 +817,189 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     }
 }
 
+
+// ======================= network settings and the setup hotspot =======================
+// Wi-Fi name/password and the host address live in flash (NVS), set from a phone through a setup hotspot. The values compiled in
+// through menuconfig remain as a fallback for development, so an existing board keeps working untouched.
+static char g_ssid[33], g_pass[65], g_host[64];
+static int g_port;
+static volatile bool g_in_setup;
+static char g_setup_code[9];
+static int g_setup_fails;
+static int64_t g_restart_at_us;
+
+static void net_cfg_load(void)
+{
+    strlcpy(g_ssid, CONFIG_NT_WIFI_SSID, sizeof g_ssid);
+    strlcpy(g_pass, CONFIG_NT_WIFI_PASSWORD, sizeof g_pass);
+    strlcpy(g_host, CONFIG_NT_HOST_IP, sizeof g_host);
+    g_port = CONFIG_NT_HOST_PORT;
+    nvs_handle_t h;
+    if (nvs_open("ntcfg", NVS_READONLY, &h) != ESP_OK) return;
+    size_t n = sizeof g_ssid;
+    char ssid[33] = "", pass[65] = "", host[64] = "";
+    int32_t port = 0;
+    if (nvs_get_str(h, "ssid", ssid, &n) == ESP_OK && ssid[0]) {
+        n = sizeof pass;
+        nvs_get_str(h, "pass", pass, &n);
+        n = sizeof host;
+        nvs_get_str(h, "host", host, &n);
+        nvs_get_i32(h, "port", &port);
+        strlcpy(g_ssid, ssid, sizeof g_ssid);
+        strlcpy(g_pass, pass, sizeof g_pass);
+        if (host[0]) strlcpy(g_host, host, sizeof g_host);
+        if (port > 0 && port < 65536) g_port = (int)port;
+        ESP_LOGI(TAG, "network settings from flash: Wi-Fi '%s', host %s:%d", g_ssid, g_host, g_port);
+    }
+    nvs_close(h);
+}
+
+static void url_decode(char *s)
+{
+    char *o = s;
+    for (; *s; s++) {
+        if (*s == '+') *o++ = ' ';
+        else if (*s == '%' && s[1] && s[2]) {
+            unsigned v;
+            char t[3] = {s[1], s[2], 0};
+            if (sscanf(t, "%2x", &v) == 1) { *o++ = (char)v; s += 2; } else *o++ = *s;
+        } else *o++ = *s;
+    }
+    *o = 0;
+}
+static bool form_get(const char *body, const char *key, char *out, size_t cap)
+{
+    size_t kl = strlen(key);
+    for (const char *p = body; p && *p;) {
+        if (strncmp(p, key, kl) == 0 && p[kl] == '=') {
+            const char *v = p + kl + 1, *e = strchr(v, '&');
+            size_t n = e ? (size_t)(e - v) : strlen(v);
+            if (n >= cap) return false;
+            memcpy(out, v, n);
+            out[n] = 0;
+            url_decode(out);
+            return true;
+        }
+        p = strchr(p, '&');
+        if (p) p++;
+    }
+    return false;
+}
+
+static const char SETUP_PAGE[] =
+    "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<title>Nine Tails setup</title><style>body{font-family:sans-serif;margin:20px;max-width:420px}input{width:100%;padding:10px;margin:6px 0 14px;box-sizing:border-box;font-size:16px}"
+    "button{padding:12px 20px;font-size:16px}</style></head><body><h2>Nine Tails setup</h2>"
+    "<form method=post action=/save><label>Wi-Fi name (2.4 GHz)</label><input name=ssid maxlength=32 required>"
+    "<label>Wi-Fi password</label><input name=pass type=password maxlength=63>"
+    "<label>Computer address (the one running her host)</label><input name=host maxlength=63 required placeholder='192.168.1.42'>"
+    "<label>Port</label><input name=port value=8443 maxlength=5>"
+    "<button type=submit>Save and restart</button></form></body></html>";
+
+static esp_err_t setup_get(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, SETUP_PAGE, HTTPD_RESP_USE_STRLEN);
+}
+static esp_err_t setup_save(httpd_req_t *req)
+{
+    char body[400];
+    int len = req->content_len;
+    if (len <= 0 || len >= (int)sizeof body) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad form"); return ESP_OK; }
+    int got = 0;
+    while (got < len) {
+        int r = httpd_req_recv(req, body + got, len - got);
+        if (r <= 0) { httpd_resp_send_err(req, HTTPD_408_REQ_TIMEOUT, "timeout"); return ESP_OK; }
+        got += r;
+    }
+    body[got] = 0;
+    char ssid[40] = "", pass[72] = "", host[72] = "", port_s[12] = "8443";
+    form_get(body, "ssid", ssid, sizeof ssid);
+    form_get(body, "pass", pass, sizeof pass);
+    form_get(body, "host", host, sizeof host);
+    form_get(body, "port", port_s, sizeof port_s);
+    int port = atoi(port_s);
+    bool host_ok = host[0] != 0;
+    for (const char *c = host; *c; c++)
+        if (!((*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || *c == '.' || *c == '-')) host_ok = false;
+    size_t pl = strlen(pass);
+    if (!ssid[0] || strlen(ssid) > 32 || pl > 63 || (pl > 0 && pl < 8) || !host_ok || port < 1 || port > 65535) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Check the Wi-Fi name, password (8 or more characters), address and port.");
+        return ESP_OK;
+    }
+    nvs_handle_t h;
+    if (nvs_open("ntcfg", NVS_READWRITE, &h) != ESP_OK) { httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "could not save"); return ESP_OK; }
+    nvs_set_str(h, "ssid", ssid);
+    nvs_set_str(h, "pass", pass);
+    nvs_set_str(h, "host", host);
+    nvs_set_i32(h, "port", port);
+    esp_err_t e = nvs_commit(h);
+    nvs_close(h);
+    if (e != ESP_OK) { httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "could not save"); return ESP_OK; }
+    ESP_LOGI(TAG, "network settings saved: Wi-Fi '%s', host %s:%d (restarting)", ssid, host, port);
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_send(req, "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'><body style='font-family:sans-serif;margin:20px'><h2>Saved</h2><p>Nine Tails is restarting and will join your Wi-Fi. You can close this page.</p>", HTTPD_RESP_USE_STRLEN);
+    g_restart_at_us = esp_timer_get_time() + 2500000;
+    return ESP_OK;
+}
+
+// Starts the hotspot "NineTails-Setup-XXXX" (password = the 8 digits shown on her screen) and the setup page at http://192.168.4.1.
+static void setup_mode_start(void)
+{
+    if (g_in_setup) return;
+    g_in_setup = true;
+    for (int i = 0; i < 8; i++) g_setup_code[i] = (char)('0' + esp_random() % 10);
+    g_setup_code[8] = 0;
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
+    wifi_config_t ap = {0};
+    snprintf((char *)ap.ap.ssid, sizeof ap.ap.ssid, "NineTails-Setup-%02X%02X", mac[4], mac[5]);
+    ap.ap.ssid_len = (uint8_t)strlen((char *)ap.ap.ssid);
+    strlcpy((char *)ap.ap.password, g_setup_code, sizeof ap.ap.password);
+    ap.ap.max_connection = 2;
+    ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    ap.ap.channel = 1;
+    esp_wifi_stop();
+    esp_netif_create_default_wifi_ap();
+    esp_wifi_set_mode(WIFI_MODE_AP);
+    esp_wifi_set_config(WIFI_IF_AP, &ap);
+    esp_wifi_start();
+    httpd_handle_t srv = NULL;
+    httpd_config_t hc = HTTPD_DEFAULT_CONFIG();
+    hc.stack_size = 8192;
+    if (httpd_start(&srv, &hc) == ESP_OK) {
+        httpd_uri_t g = {.uri = "/", .method = HTTP_GET, .handler = setup_get};
+        httpd_uri_t p = {.uri = "/save", .method = HTTP_POST, .handler = setup_save};
+        httpd_register_uri_handler(srv, &g);
+        httpd_register_uri_handler(srv, &p);
+    }
+    face_show_code(g_setup_code);
+    g_restart_at_us = 0;
+    ESP_LOGW(TAG, "SETUP MODE: join Wi-Fi '%s' with password %s, then open http://192.168.4.1", ap.ap.ssid, g_setup_code);
+}
+
+// Connects to Wi-Fi, syncs the clock and opens the connection to the host, without blocking the buttons and touch loop.
+// If the Wi-Fi never comes up in 90 s the setup hotspot opens by itself (she may be somewhere new).
+static void net_task(void *arg)
+{
+    for (int waited = 0; !g_in_setup; waited += 5) {
+        if (xEventGroupWaitBits(s_ev, GOT_IP, pdFALSE, pdTRUE, pdMS_TO_TICKS(5000)) & GOT_IP) break;
+        if (waited >= 90 && !g_in_setup) { ESP_LOGW(TAG, "Wi-Fi did not come up in 90 s: opening the setup hotspot"); setup_mode_start(); }
+    }
+    if (g_in_setup) vTaskDelete(NULL);
+    esp_sntp_config_t sntp = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    ESP_ERROR_CHECK(esp_netif_sntp_init(&sntp));
+    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(20000)) != ESP_OK) ESP_LOGE(TAG, "clock not synced in 20 s; the certificate check will fail");
+    static char uri[96];
+    snprintf(uri, sizeof(uri), "wss://%s:%d", g_host, g_port);
+    esp_websocket_client_config_t wsc = {.uri = uri, .cert_pem = ca_pem_start, .reconnect_timeout_ms = 5000, .network_timeout_ms = 10000, .task_stack = 12288, .buffer_size = 8192};
+    g_ws = esp_websocket_client_init(&wsc);
+    esp_websocket_register_events(g_ws, WEBSOCKET_EVENT_ANY, ws_event, (void *)g_ws);
+    ESP_ERROR_CHECK(esp_websocket_client_start(g_ws));
+    ESP_LOGI(TAG, "connecting to %s", uri);
+    vTaskDelete(NULL);
+}
+
 void app_main(void)
 {
     g_mu = xSemaphoreCreateMutex();
@@ -851,29 +1039,20 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_wifi_init(&wc));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event, NULL));
+    net_cfg_load();
     wifi_config_t cfg = {0};
-    strlcpy((char *)cfg.sta.ssid, CONFIG_NT_WIFI_SSID, sizeof(cfg.sta.ssid));
-    strlcpy((char *)cfg.sta.password, CONFIG_NT_WIFI_PASSWORD, sizeof(cfg.sta.password));
-    cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    strlcpy((char *)cfg.sta.ssid, g_ssid, sizeof(cfg.sta.ssid));
+    strlcpy((char *)cfg.sta.password, g_pass, sizeof(cfg.sta.password));
+    cfg.sta.threshold.authmode = g_pass[0] ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
     esp_wifi_set_ps(WIFI_PS_NONE);   // no Wi-Fi power saving: lower delay and fewer dropped connections (re-enable for battery use later)
-    xEventGroupWaitBits(s_ev, GOT_IP, pdFALSE, pdTRUE, portMAX_DELAY);
-    esp_sntp_config_t sntp = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
-    ESP_ERROR_CHECK(esp_netif_sntp_init(&sntp));
-    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(20000)) != ESP_OK) ESP_LOGE(TAG, "clock not synced in 20 s; the certificate check will fail");
-
-    char uri[64];
-    snprintf(uri, sizeof(uri), "wss://%s:%d", CONFIG_NT_HOST_IP, CONFIG_NT_HOST_PORT);
-    esp_websocket_client_config_t wsc = {.uri = uri, .cert_pem = ca_pem_start, .reconnect_timeout_ms = 5000, .network_timeout_ms = 10000, .task_stack = 12288, .buffer_size = 8192};
-    g_ws = esp_websocket_client_init(&wsc);
-    esp_websocket_register_events(g_ws, WEBSOCKET_EVENT_ANY, ws_event, (void *)g_ws);
-    ESP_ERROR_CHECK(esp_websocket_client_start(g_ws));
+    xTaskCreate(net_task, "net", 6144, NULL, 5, NULL);
     ESP_LOGI(TAG, "ready. Microphone is MUTED. +/KEY unmutes or mutes the microphone (only the physical button can unmute). BOOT/- is push-to-talk.");
 
     bool prev_plus = false, prev_main = false, prev_pwr = false, prev_touch = false, touch_used = false;
-    int64_t last_touch_event_us = 0, touch_t0 = 0;
+    int64_t last_touch_event_us = 0, touch_t0 = 0, both_since = 0, setup_t0 = 0;
     for (;;) {
         bool plus = gpio_get_level(NT_BTN_PLUS) == 0, main_btn = gpio_get_level(NT_BTN_BOOT) == 0, pwr = gpio_get_level(NT_BTN_PWR) == 0;
         int tr = touch_read();
@@ -881,6 +1060,19 @@ void app_main(void)
         if (tr < 0 && (++touch_fail % 100) == 1) ESP_LOGW(TAG, "touch read failed (%d so far)", touch_fail);
         bool touch = tr < 0 ? prev_touch : tr > 0;
         face_set_mic(g_mic_hw_ok ? (g_mic_enabled ? 1 : 0) : -1);   // shows whether she may listen
+        int64_t t_now = esp_timer_get_time();
+        if (g_in_setup) {
+            // setup hotspot is open: the screen shows the 8-digit code. PWR cancels, a saved form or 10 minutes restarts the board.
+            if (!setup_t0) setup_t0 = t_now;
+            if ((pwr && !prev_pwr) || (g_restart_at_us && t_now > g_restart_at_us) || t_now - setup_t0 > 600LL * 1000000) esp_restart();
+            prev_pwr = pwr;
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+        if (plus && main_btn) {                              // both side buttons held for 4 s: network setup
+            if (!both_since) both_since = t_now;
+            else if (t_now - both_since > 4000000) setup_mode_start();
+        } else both_since = 0;
         if (g_sleeping) {
             // asleep: any physical touch or button wakes her (the buttons do nothing else), or the timed wake arrives
             if ((plus && !prev_plus) || (main_btn && !prev_main) || (pwr && !prev_pwr) || (touch && !prev_touch)) {
