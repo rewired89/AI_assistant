@@ -1,5 +1,7 @@
 # Psychological Growth Engine
 
+For a professional to review: `python -m tools.review_packet` builds `docs/clinician-review/PACKET.html` (print to PDF) with every sentence she can hear, plus `responses.csv` to answer item by item. A test keeps it in step with the code.
+
 Status: implemented and tested against synthetic scenarios and scripted/fake models (`companion/psychology`, `tests/psychology`). **Not reviewed by a licensed clinician and not used with a real person.** Get a psychologist or counselor to read the scripts in `exercises/library.yaml`, `safety/screen.py` and `conflict_navigation/guide.py` before she uses it for a real conflict.
 
 ## What it is and is not

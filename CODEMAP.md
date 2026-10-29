@@ -83,6 +83,7 @@
 | `docs/` | architecture, decisions, hardware (unknowns), boundary, protocol, security, privacy, psychology-design, roadmap |
 | `tests/` | pytest suites: protocol, firmware (simulated), companion |
 | `firmware/{screen_test,input_test,audio_test,power_probe,net_test,voice_test}` | Real-board test firmware (ESP-IDF, bash only); voice_test = current device firmware incl. `main/face.c` (procedural face) and `partitions.csv` |
+| `tools/review_packet.py`, `docs/clinician-review/` | Builds the printable clinician review packet and response sheet from the live scripts |
 | `companion/speech/wake.py` | Wake phrase matcher (loose spelling, start of utterance only) used by the pipeline's idle wake listening and follow-up listening |
 | `tools/import_sleep.py` | Puts her sleeping-pose sheet into default.json as the sleeping (colour) and offline (grey) clips |
 | `tools/sprite_bundle.py` | Packs egg/baby/adult sprite sets into build/sprites.bin for the device `sprites` partition |
