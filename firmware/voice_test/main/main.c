@@ -125,7 +125,7 @@ static void send_signed(esp_websocket_client_handle_t c, const char *type, const
 
 static void send_hello(esp_websocket_client_handle_t c)
 {
-    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.7\",\"protocol_versions\":[1],\"recovered_state\":false}");
+    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.8\",\"protocol_versions\":[1],\"recovered_state\":false}");
 }
 
 // ---- incoming: verify first, act second. Anything that fails a check is dropped silently (counted, never answered).
@@ -870,6 +870,7 @@ void app_main(void)
     for (;;) {
         bool plus = gpio_get_level(NT_BTN_PLUS) == 0, main_btn = gpio_get_level(NT_BTN_BOOT) == 0, pwr = gpio_get_level(NT_BTN_PWR) == 0;
         bool touch = touch_down();
+        face_set_mic(g_mic_hw_ok ? (g_mic_enabled ? 1 : 0) : -1);   // shows whether she may listen
         if (g_sleeping) {
             // asleep: any physical touch or button wakes her (the buttons do nothing else), or the timed wake arrives
             if ((plus && !prev_plus) || (main_btn && !prev_main) || (pwr && !prev_pwr) || (touch && !prev_touch)) {

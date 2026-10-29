@@ -165,3 +165,17 @@ def test_set_voice_changes_only_the_voice_block(tmp_path):
     assert yaml.safe_load(cfg.read_text())["voice"] == {"follow_up_s": 6, "wake_phrase": ""}
     with pytest.raises(ValueError):
         deploy.set_voice(cfg, 99, None)
+
+
+def test_set_timezone_validates_and_changes_only_that(tmp_path):
+    import yaml
+    import pytest
+    from tools import deploy
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(yaml.safe_dump({"species": "ninetales", "tts": {"engine": "kokoro"}}))
+    deploy.set_timezone(cfg, "America/New_York")
+    out = yaml.safe_load(cfg.read_text())
+    assert out["timezone"] == "America/New_York" and out["tts"] == {"engine": "kokoro"}
+    with pytest.raises(ValueError):
+        deploy.set_timezone(cfg, "Mars/Olympus")
+    assert isinstance(deploy.local_timezone(), str) and deploy.local_timezone()

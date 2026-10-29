@@ -1,5 +1,6 @@
 #include "face.h"
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include "board_waveshare_esp32s3_lcd154.h"
 #include "driver/ledc.h"
@@ -85,6 +86,29 @@ static uint16_t c565(uint8_t r, uint8_t g, uint8_t b)
     return (uint16_t)((v >> 8) | (v << 8));   // the panel expects the high byte first
 }
 
+
+// ---------------------------------------------------------------- microphone indicator (top right corner)
+static volatile int g_mic = -1;
+static const char *MIC_GLYPH[14] = {
+    "...XXXXXX...", "..XXXXXXXX..", "..XXXXXXXX..", "..XXXXXXXX..", "..XXXXXXXX..", "..XXXXXXXX..", "X.XXXXXXXX.X",
+    "X..XXXXXX..X", ".X........X.", "..XX....XX..", "....XXXX....", ".....XX.....", ".....XX.....", "...XXXXXX...",
+};
+#define MIC_X 204
+#define MIC_Y 8
+// returns true and the colour when this screen pixel belongs to the indicator
+static bool mic_px(int x, int y, uint16_t *col)
+{
+    int m = g_mic;
+    if (m < 0) return false;
+    int gx = (x - MIC_X) / 2, gy = (y - MIC_Y) / 2;
+    if (x < MIC_X || y < MIC_Y || gx > 11 || gy > 13) return false;
+    if (m == 0 && abs(gx * 13 - gy * 11) <= 14) { *col = c565(244, 139, 182); return true; }   // the slash: muted
+    if (MIC_GLYPH[gy][gx] != 'X') return false;
+    *col = m ? c565(235, 242, 246) : c565(110, 120, 128);
+    return true;
+}
+void face_set_mic(int state) { g_mic = state; }
+
 static int find_look(const char *name)
 {
     for (int i = 0; i < NLOOKS; i++) if (strcmp(LOOKS[i].name, name) == 0) return i;
@@ -137,7 +161,11 @@ static void draw(const frame_t *f)
 {
     for (int y0 = 0; y0 < H; y0 += STRIP) {
         for (int y = 0; y < STRIP; y++)
-            for (int x = 0; x < W; x++) g_buf[y * W + x] = px(f, x, y0 + y);
+            for (int x = 0; x < W; x++) {
+                uint16_t col = px(f, x, y0 + y), mc;
+                if (mic_px(x, y0 + y, &mc)) col = mc;
+                g_buf[y * W + x] = col;
+            }
         push_strip(y0);
     }
 }
@@ -265,6 +293,8 @@ static void draw_sprite(const sset_t *s, const sanim_t *a, int frame)
                     uint8_t idx = px8[(yy / SPRITE_SCALE) * s->w + (xx / SPRITE_SCALE)];
                     if (idx < s->ncol && s->opaque[idx]) col = s->pal[idx];
                 }
+                uint16_t mc;
+                if (mic_px(x, y0 + y, &mc)) col = mc;
                 g_buf[y * W + x] = col;
             }
         }
@@ -307,7 +337,7 @@ static void face_task(void *arg)
         }
         if (an) {
             int frame = sprite_frame(&g_sets[set], an, (int)((now - look_t0) / 1000));
-            int skey = 1000000 + set * 100000 + (int)(an - g_sets[set].anim) * 100 + frame;
+            int skey = 1000000 + (g_mic + 1) * 10000000 + set * 100000 + (int)(an - g_sets[set].anim) * 100 + frame;
             if (skey != last_key) {
                 draw_sprite(&g_sets[set], an, frame);
                 last_key = skey;
@@ -321,7 +351,7 @@ static void face_task(void *arg)
         const look_t *l = &LOOKS[look];
         frame_t f = {.l = l, .ry = (blink && l->ry > 12 && l->eye != EYE_ARCH) ? 3 : l->ry,
                      .mouth_ry = (const int[]){3, 9, 14, 9}[talk]};
-        int key = look * 100 + (f.ry == 3 && l->ry > 12 ? 1 : 0) + ((l->mouth == MOUTH_TALK) ? 10 + talk : 0);
+        int key = (g_mic + 1) * 100000 + look * 100 + (f.ry == 3 && l->ry > 12 ? 1 : 0) + ((l->mouth == MOUTH_TALK) ? 10 + talk : 0);
         if (key != last_key) {
             draw(&f);
             last_key = key;

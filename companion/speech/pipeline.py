@@ -145,6 +145,7 @@ class VoicePipeline:
         self._device_sleeping = False
         self.on_reply: Callable[[Reply], None] | None = None   # told about each model reply (no audio, no transcript)
         self.on_heard: Callable[[str], None] | None = None     # DEV RIGS ONLY (desk robot): the cleaned transcript, "" if none
+        self.on_ambient: Callable[[str, bool], None] | None = None  # DEV RIGS ONLY (--show-heard): what wake listening heard and whether it was the phrase
         self.on_audio: Callable[[bytes, str], None] | None = None  # DEV RIGS ONLY (--save-audio): the raw PCM of one listening turn and why it ended
         self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="voice")
         self._cap: Capture | None = None
@@ -382,6 +383,11 @@ class VoicePipeline:
 
     def _on_ambient_text(self, text: str) -> None:
         rest = match_wake(text, self.cfg.wake_phrase) if text else None
+        if self.on_ambient is not None:
+            try:
+                self.on_ambient(text, rest is not None)
+            except Exception:
+                pass
         if rest is None:
             self.stats["ambient_ignored"] += 1
             return

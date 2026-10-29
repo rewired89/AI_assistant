@@ -43,7 +43,7 @@ def build(dir_: Path, host_ip: str, device_id: str = "ninetails-01", species: st
     fd = os.open(bundle_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         json.dump(bundle, f, indent=2)
-    cfg = {"species": species, "device_id": device_id, "secrets": "keys.json", "data_dir": "data",
+    cfg = {"species": species, "timezone": local_timezone(), "device_id": device_id, "secrets": "keys.json", "data_dir": "data",
            "tls": {"cert": "tls/server.pem", "key": "tls/server.key"},
            "listen": {"host": "0.0.0.0", "port": PORT},
            "stt": {"engine": "whisper", "model": str(Path(stt_model).expanduser().resolve())} if stt_model else {"engine": "none"},
@@ -98,6 +98,38 @@ def set_tts(config: Path, model: Path, voice: str = "af_heart") -> None:
     if not isinstance(cfg, dict):
         raise ValueError(f"{config} is not a companion config")
     cfg["tts"] = {"engine": "kokoro", "model": str(model), "voice": voice}
+    config.write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+
+def local_timezone() -> str:
+    """The computer's own time zone name (e.g. America/New_York), or UTC if it cannot be told."""
+    for src in ("/etc/timezone",):
+        try:
+            name = Path(src).read_text().strip()
+            if name:
+                return name
+        except OSError:
+            pass
+    try:
+        parts = Path("/etc/localtime").resolve().parts
+        if "zoneinfo" in parts:
+            return "/".join(parts[parts.index("zoneinfo") + 1:])
+    except OSError:
+        pass
+    return "UTC"
+
+
+def set_timezone(config: Path, name: str) -> None:
+    """Her local time zone: reminders, quiet hours, bedtime and good-morning all depend on it. Changes nothing else."""
+    from zoneinfo import ZoneInfo
+    try:
+        ZoneInfo(name)
+    except Exception:
+        raise ValueError(f"{name!r} is not a time zone name (examples: America/New_York, America/Chicago, Europe/Madrid)") from None
+    cfg = yaml.safe_load(config.read_text())
+    if not isinstance(cfg, dict):
+        raise ValueError(f"{config} is not a companion config")
+    cfg["timezone"] = name
     config.write_text(yaml.safe_dump(cfg, sort_keys=False))
 
 
@@ -165,6 +197,9 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--config", required=True)
     v.add_argument("--model", required=True, help="the folder made by `python -m tools.fetch_models kokoro`")
     v.add_argument("--voice", default="af_heart", help="af_heart (default), af_sarah, af_bella, af_nicole, af_sky, af_nova, bf_emma")
+    z = sub.add_parser("set-timezone", help="set her local time zone (reminders, quiet hours and bedtime use it)")
+    z.add_argument("--config", required=True)
+    z.add_argument("--tz", required=True, help="e.g. America/New_York")
     h = sub.add_parser("set-voice", help="hands-free settings: follow-up listening and the wake phrase")
     h.add_argument("--config", required=True)
     h.add_argument("--follow-up", type=float, help="seconds she keeps listening after an answer (0 = off, default 8)")
@@ -176,6 +211,14 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--out", help="where to write the unit (default: next to the config)")
     w.add_argument("--debug", action="store_true", help="testing only: log what she hears and says, and what happens inside (the journal keeps it on disk)")
     a = ap.parse_args(argv)
+    if a.cmd == "set-timezone":
+        try:
+            set_timezone(Path(a.config), a.tz)
+        except (ValueError, OSError, yaml.YAMLError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        print(f"Time zone is now {a.tz} in {a.config}. Restart the companion for it to take effect.")
+        return 0
     if a.cmd == "set-voice":
         try:
             voice = set_voice(Path(a.config), a.follow_up, a.wake_phrase)
