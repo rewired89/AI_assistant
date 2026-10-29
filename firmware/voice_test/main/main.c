@@ -125,7 +125,7 @@ static void send_signed(esp_websocket_client_handle_t c, const char *type, const
 
 static void send_hello(esp_websocket_client_handle_t c)
 {
-    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.8\",\"protocol_versions\":[1],\"recovered_state\":false}");
+    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.9\",\"protocol_versions\":[1],\"recovered_state\":false}");
 }
 
 // ---- incoming: verify first, act second. Anything that fails a check is dropped silently (counted, never answered).
@@ -678,10 +678,11 @@ static void cmd_device_set_config(const char *mid, cJSON *p)
     }
     reply_completed(mid);
 }
-static bool touch_down(void)
+// 1 = a finger is on the screen, 0 = none, -1 = the read failed (the bus is shared with the audio chips: keep the last known state then)
+static int touch_read(void)
 {
     uint8_t reg = 0x01, d[6] = {0};
-    if (!g_touch || i2c_master_transmit_receive(g_touch, &reg, 1, d, 6, 50) != ESP_OK) return false;
+    if (!g_touch || i2c_master_transmit_receive(g_touch, &reg, 1, d, 6, 30) != ESP_OK) return -1;
     return (d[1] & 0x0F) > 0;
 }
 
@@ -869,7 +870,10 @@ void app_main(void)
     int64_t last_touch_event_us = 0, touch_t0 = 0;
     for (;;) {
         bool plus = gpio_get_level(NT_BTN_PLUS) == 0, main_btn = gpio_get_level(NT_BTN_BOOT) == 0, pwr = gpio_get_level(NT_BTN_PWR) == 0;
-        bool touch = touch_down();
+        int tr = touch_read();
+        static int touch_fail;
+        if (tr < 0 && (++touch_fail % 100) == 1) ESP_LOGW(TAG, "touch read failed (%d so far)", touch_fail);
+        bool touch = tr < 0 ? prev_touch : tr > 0;
         face_set_mic(g_mic_hw_ok ? (g_mic_enabled ? 1 : 0) : -1);   // shows whether she may listen
         if (g_sleeping) {
             // asleep: any physical touch or button wakes her (the buttons do nothing else), or the timed wake arrives
@@ -900,8 +904,8 @@ void app_main(void)
                         send_signed(g_ws, "touch.detected", "tch", "{\"zone\":\"screen\"}");
                     }
                 }
-                if (!touch && prev_touch && !touch_used && now_us - touch_t0 >= 40000) {   // a quick tap = push to talk, same as the left button
-                    ESP_LOGI(TAG, "tap: push to talk");
+                if (!touch && prev_touch && !touch_used && now_us - touch_t0 >= 15000) {   // a quick tap = push to talk, same as the left button
+                    ESP_LOGI(TAG, "tap (%d ms): push to talk", (int)((now_us - touch_t0) / 1000));
                     send_signed(g_ws, "button.pressed", "btn", "{\"button\":\"main\",\"kind\":\"single\"}");
                 }
             }
@@ -910,6 +914,6 @@ void app_main(void)
         prev_main = main_btn;
         prev_pwr = pwr;
         prev_touch = touch;
-        vTaskDelay(pdMS_TO_TICKS(30));
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }

@@ -258,15 +258,16 @@ class VoicePipeline:
         amb, self._amb = self._amb, None
         if not amb:
             return
-        if amb["fut"] is not None:
-            amb["fut"].cancel()
+        for fut in amb["futs"]:
+            fut.cancel()
         cap = amb["cap"]
-        if not cap.done:
-            try:
-                self.client.stop_capture(cap, timeout_s=3.0)
-            except Exception:
-                pass
-        self.client.captures.pop(cap.stream_no, None)
+        if cap is not None:
+            if not cap.done:
+                try:
+                    self.client.stop_capture(cap, timeout_s=3.0)
+                except Exception:
+                    pass
+            self.client.captures.pop(cap.stream_no, None)
 
     def _abort_all(self, keep_state: bool = False) -> None:
         self._abort_ambient()
@@ -333,55 +334,67 @@ class VoicePipeline:
 
     # ---- wake phrase (inside IDLE) ------------------------------------------------------
     def _poll_ambient(self, now: float) -> None:
-        """While idle, with the microphone physically on, listen in short windows. Speech that does not start with the wake
-        phrase is transcribed here, on this machine, and dropped on the spot: nothing is kept or acted on."""
+        """While idle, with the microphone physically on, keep ONE capture open and cut it into utterances. Each utterance is
+        transcribed here, on this machine, in the background (the capture never pauses, so nothing said meanwhile is lost) and
+        dropped on the spot unless it starts with the wake phrase: nothing is kept or acted on."""
         amb = self._amb
         if amb is None:
             if now < self._amb_retry_at:
                 return
-            try:
-                cap = self.client.start_capture(max_seconds=30)
-            except CommandRejected:
-                self.stats["ambient_refused"] += 1
-                self._amb_retry_at = now + self.cfg.wake_retry_s
-                return
-            except (TransportClosed, CommandTimeout):     # the robot is not connected (yet): look again soon, quietly
-                self.stats["ambient_offline"] += 1
-                self._amb_retry_at = now + 3.0
-                return
-            self._amb = {"cap": cap, "det": EndpointDetector(self.cfg.vad_threshold, self.cfg.min_speech_s, self.cfg.trailing_silence_s),
-                         "fed": 0, "fut": None, "t0": now}
-            return
-        if amb["fut"] is not None:
-            if not amb["fut"].done():
-                if now - amb["t0"] > self.cfg.stt_timeout_s:
-                    self._abort_ambient()
-                return
-            fut, self._amb = amb["fut"], None
+            amb = self._amb = {"cap": None, "det": None, "fed": 0, "seg0": 0, "futs": []}
+        # finished transcripts first: the first one that is the wake phrase takes over
+        for fut in [f for f in amb["futs"] if f.done()]:
+            amb["futs"].remove(fut)
             try:
                 text = clean_transcript(fut.result(), self.cfg.max_utterance_chars)
             except Exception:
                 self.stats["stt_errors"] += 1
+                continue
+            if self._on_ambient_text(text):
                 return
-            return self._on_ambient_text(text)
         cap, det = amb["cap"], amb["det"]
+        if cap is None or cap.done:
+            if cap is not None:
+                self._ambient_cut(amb, flush=True)
+                self.client.captures.pop(cap.stream_no, None)
+                amb["cap"] = None
+            try:
+                new = self.client.start_capture(max_seconds=30)
+            except CommandRejected:
+                self.stats["ambient_refused"] += 1
+                self._amb_retry_at = now + self.cfg.wake_retry_s
+                return self._ambient_idle(amb)
+            except (TransportClosed, CommandTimeout):     # the robot is not connected (yet): look again soon, quietly
+                self.stats["ambient_offline"] += 1
+                self._amb_retry_at = now + 3.0
+                return self._ambient_idle(amb)
+            amb["cap"], amb["det"], amb["fed"], amb["seg0"] = new, EndpointDetector(self.cfg.vad_threshold, self.cfg.min_speech_s, self.cfg.trailing_silence_s), 0, 0
+            return
         for chunk in cap.chunks[amb["fed"]:]:
             det.feed(chunk)
         amb["fed"] = len(cap.chunks)
-        if not (det.endpoint or cap.done):
-            return
-        if not cap.done:
-            self.client.stop_capture(cap, timeout_s=3.0)
-            for chunk in cap.chunks[amb["fed"]:]:
-                det.feed(chunk)
-        pcm = cap.pcm
-        self.client.captures.pop(cap.stream_no, None)
-        if det.enough_speech and not cap.corrupt:
-            amb["fut"], amb["t0"] = self._pool.submit(self.stt.transcribe, pcm), now
-        else:
-            self._amb = None             # nothing said: open the next window straight away
+        if det.endpoint:
+            self._ambient_cut(amb)
+        elif not det.has_speech and amb["fed"] - amb["seg0"] > 12:
+            amb["seg0"] = amb["fed"] - 8           # nobody is talking: keep only a short lead-in before the next utterance
 
-    def _on_ambient_text(self, text: str) -> None:
+    def _ambient_cut(self, amb: dict, flush: bool = False) -> None:
+        """Hand the audio since the last cut to the recognizer (in the background) and start a fresh detector."""
+        cap, det = amb["cap"], amb["det"]
+        pcm = b"".join(cap.chunks[amb["seg0"]:amb["fed"]])
+        if det.has_speech and det.enough_speech and not cap.corrupt and len(amb["futs"]) < 3:
+            amb["futs"].append(self._pool.submit(self.stt.transcribe, pcm))
+        amb["seg0"] = amb["fed"]
+        if not flush:
+            amb["det"] = EndpointDetector(self.cfg.vad_threshold, self.cfg.min_speech_s, self.cfg.trailing_silence_s)
+
+    def _ambient_idle(self, amb: dict) -> None:
+        """Nothing can be captured right now: keep only transcripts still being worked on, then stand down."""
+        if not amb["futs"]:
+            self._amb = None
+
+    def _on_ambient_text(self, text: str) -> bool:
+        """True when it was the wake phrase (wake listening has then been stopped and the exchange started)."""
         rest = match_wake(text, self.cfg.wake_phrase) if text else None
         if self.on_ambient is not None:
             try:
@@ -390,7 +403,8 @@ class VoicePipeline:
                 pass
         if rest is None:
             self.stats["ambient_ignored"] += 1
-            return
+            return False
+        self._abort_ambient()
         self.stats["wake_heard"] += 1
         self._note("wake_phrase")
         self._conversation = True
@@ -401,8 +415,10 @@ class VoicePipeline:
                 except Exception:
                     pass
             self._animate("thinking")
-            return self._route(rest)
+            self._route(rest)
+            return True
         self._start_speaking(self.lines["wake_ack"], "normal")   # just her name: answer, then listen (follow-up)
+        return True
 
     # ---- LISTENING ------------------------------------------------------------------
     def _poll_listening(self, presses: int) -> None:

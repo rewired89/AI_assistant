@@ -489,3 +489,30 @@ def test_wake_listening_is_quiet_while_the_robot_is_not_connected(rig, device, m
     for _ in range(30):                                          # 3 seconds of polling
         r.pipe.poll(); r.clock.advance(0.1)
     assert r.pipe.stats["ambient_offline"] <= 2 and r.pipe.stats["device_errors"] == 0 and r.pipe.state is State.IDLE
+
+
+def test_pet_names_and_a_misheard_greeting_still_wake_her():
+    from companion.speech.wake import match_wake
+    assert match_wake("Hey baby girl, what's up?", "hey girl") == "what's up?"
+    assert match_wake("Bye, you baby girl.", "hey girl") == ""
+    assert match_wake("hi girl how are you", "hey girl") == "how are you"
+    assert match_wake("hey there everyone and girl", "hey girl") is None      # too many words in between
+    assert match_wake("the girl said hey", "hey girl") is None
+
+
+def test_wake_listening_keeps_the_microphone_open_while_it_transcribes(rig, device):
+    gate = threading.Event()
+
+    class SlowSTT(FakeRecognizer):
+        def transcribe(self, pcm):
+            gate.wait(5)
+            return super().transcribe(pcm)
+    r = rig(stt=SlowSTT(["something else entirely", "hey girl what time is it"]), cfg=PipelineConfig(wake_phrase="hey girl"))
+    r.run(lambda: device.capture is not None)
+    r.mic(tone(0.8)); r.mic(silence(1.3))
+    r.run(lambda: len(r.pipe._amb["futs"]) == 1 if r.pipe._amb else False)
+    assert device.capture is not None                           # still listening while the first utterance is being transcribed
+    r.mic(tone(0.8)); r.mic(silence(1.3))                       # said during that time: not lost
+    r.run(lambda: len(r.pipe._amb["futs"]) == 2)
+    gate.set()
+    r.run(lambda: r.responder.heard == ["what time is it"])
