@@ -477,3 +477,15 @@ def test_a_button_press_or_her_own_speech_takes_over_from_wake_listening(rig, de
     r.utter()                                                    # press during wake listening starts a normal turn
     r.idle()
     assert r.responder.heard == ["what is your name"] and r.pipe.stats["turns"] == 1
+
+
+def test_wake_listening_is_quiet_while_the_robot_is_not_connected(rig, device, monkeypatch):
+    from companion.interfaces import TransportClosed
+    r = rig(cfg=PipelineConfig(wake_phrase="hey girl"))
+
+    def offline(*a, **k):
+        raise TransportClosed("not connected")
+    monkeypatch.setattr(r.client, "start_capture", offline)
+    for _ in range(30):                                          # 3 seconds of polling
+        r.pipe.poll(); r.clock.advance(0.1)
+    assert r.pipe.stats["ambient_offline"] <= 2 and r.pipe.stats["device_errors"] == 0 and r.pipe.state is State.IDLE

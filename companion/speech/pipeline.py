@@ -344,6 +344,10 @@ class VoicePipeline:
                 self.stats["ambient_refused"] += 1
                 self._amb_retry_at = now + self.cfg.wake_retry_s
                 return
+            except (TransportClosed, CommandTimeout):     # the robot is not connected (yet): look again soon, quietly
+                self.stats["ambient_offline"] += 1
+                self._amb_retry_at = now + 3.0
+                return
             self._amb = {"cap": cap, "det": EndpointDetector(self.cfg.vad_threshold, self.cfg.min_speech_s, self.cfg.trailing_silence_s),
                          "fed": 0, "fut": None, "t0": now}
             return
