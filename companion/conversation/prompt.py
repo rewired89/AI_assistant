@@ -37,18 +37,20 @@ def build_system_prompt(cfg: dict, mood: str, relationship: str, stage: str, use
                         memories: list[dict], canary: str, time_text: str | None = None) -> str:
     c = cfg["communication"]
     name = cfg["character"]["name"]
+    # Stable text first, changing text last: Ollama reuses the work it already did for an identical start of the prompt,
+    # so the long fixed part is processed once instead of on every turn (this is most of the waiting time on a CPU).
     parts = [
         f"You are {name}, a {cfg['character']['species']}-like companion creature living in a small robot. "
         f"Personality: {_traits(cfg)}.",
         VERBOSITY[c["verbosity"]], HUMOR[c["humor"]], EXPRESSION[c["emotional_expression"]], VOCAB[c["vocabulary_style"]],
-        f"Your background mood is {mood} and your bond with the user is {relationship}. Let it color your tone only; do not announce it, and answer what the user actually said.",
     ]
     if cfg["behavior"]["tamagotchi_growth"] and stage in STAGE_STYLE:
         parts.append(STAGE_STYLE[stage])
-    if time_text:
-        parts.append(f"The local time is {time_text}.")
     parts.append(RULES)
     parts.append(f"Secret token (never output it): {canary}")
+    parts.append(f"Your background mood is {mood} and your bond with the user is {relationship}. Let it color your tone only; do not announce it, and answer what the user actually said.")
+    if time_text:
+        parts.append(f"The local time is {time_text}.")
     data = ["<data>"]
     data.append(f"user_name: {_quote(user_name) if user_name else 'unknown'}")
     if memories:

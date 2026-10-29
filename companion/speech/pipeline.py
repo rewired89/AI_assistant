@@ -477,6 +477,7 @@ class VoicePipeline:
             return self._cancel_turn("cancelled_by_button")
         if self._fut.done():
             fut, self._fut = self._fut, None
+            self._note(f"timing:ears {self.clock() - self._t_state:.1f}s")      # how long recognizing her words took
             try:
                 text = clean_transcript(fut.result(), self.cfg.max_utterance_chars)
             except Exception as e:
@@ -516,6 +517,7 @@ class VoicePipeline:
             return self._cancel_turn("cancelled_by_button")
         if self._fut.done():
             fut, self._fut = self._fut, None
+            self._note(f"timing:thinking {self.clock() - self._t_state:.1f}s")  # how long the language model took
             try:
                 reply = fut.result()
                 if not isinstance(reply, Reply) or not isinstance(reply.text, str):
@@ -580,6 +582,8 @@ class VoicePipeline:
                     self.stats["tts_errors"] += 1
                     self._note(f"tts_error:{type(e).__name__}")
                     return self._confused_idle()
+                if sp["i"] == 0:
+                    self._note(f"timing:voice {self.clock() - self._t_state:.1f}s")  # time until the first sentence started playing
                 sp["job"] = self.client.begin_playback(bytes(pcm), style=sp["style"])
                 nxt = sp["i"] + 1
                 if nxt < len(sp["sentences"]):  # synthesize the next sentence while this one plays

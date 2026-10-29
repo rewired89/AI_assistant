@@ -101,6 +101,19 @@ def set_tts(config: Path, model: Path, voice: str = "af_heart") -> None:
     config.write_text(yaml.safe_dump(cfg, sort_keys=False))
 
 
+def set_llm(config: Path, model: str) -> None:
+    """Switch the language model (the Ollama model name, e.g. llama3.2:1b). Changes nothing else."""
+    if not model.strip() or len(model) > 80 or any(c.isspace() for c in model):
+        raise ValueError("give the model name exactly as `ollama list` shows it, e.g. llama3.2:1b")
+    cfg = yaml.safe_load(config.read_text())
+    if not isinstance(cfg, dict):
+        raise ValueError(f"{config} is not a companion config")
+    llm = dict(cfg.get("llm") or {})
+    llm["model"] = model.strip()
+    cfg["llm"] = llm
+    config.write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+
 def local_timezone() -> str:
     """The computer's own time zone name (e.g. America/New_York), or UTC if it cannot be told."""
     for src in ("/etc/timezone",):
@@ -197,6 +210,9 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--config", required=True)
     v.add_argument("--model", required=True, help="the folder made by `python -m tools.fetch_models kokoro`")
     v.add_argument("--voice", default="af_heart", help="af_heart (default), af_sarah, af_bella, af_nicole, af_sky, af_nova, bf_emma")
+    m = sub.add_parser("set-llm", help="switch the language model (Ollama model name)")
+    m.add_argument("--config", required=True)
+    m.add_argument("--model", required=True)
     z = sub.add_parser("set-timezone", help="set her local time zone (reminders, quiet hours and bedtime use it)")
     z.add_argument("--config", required=True)
     z.add_argument("--tz", required=True, help="e.g. America/New_York")
@@ -211,6 +227,14 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--out", help="where to write the unit (default: next to the config)")
     w.add_argument("--debug", action="store_true", help="testing only: log what she hears and says, and what happens inside (the journal keeps it on disk)")
     a = ap.parse_args(argv)
+    if a.cmd == "set-llm":
+        try:
+            set_llm(Path(a.config), a.model)
+        except (ValueError, OSError, yaml.YAMLError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        print(f"Language model is now {a.model} in {a.config}. Restart the companion for it to take effect.")
+        return 0
     if a.cmd == "set-timezone":
         try:
             set_timezone(Path(a.config), a.tz)

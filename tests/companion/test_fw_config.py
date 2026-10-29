@@ -179,3 +179,15 @@ def test_set_timezone_validates_and_changes_only_that(tmp_path):
     with pytest.raises(ValueError):
         deploy.set_timezone(cfg, "Mars/Olympus")
     assert isinstance(deploy.local_timezone(), str) and deploy.local_timezone()
+
+
+def test_set_llm_changes_only_the_model(tmp_path):
+    import yaml
+    import pytest
+    from tools import deploy
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(yaml.safe_dump({"llm": {"engine": "ollama", "model": "llama3.2:3b", "url": "http://127.0.0.1:11434"}}))
+    deploy.set_llm(cfg, "llama3.2:1b")
+    assert yaml.safe_load(cfg.read_text())["llm"] == {"engine": "ollama", "model": "llama3.2:1b", "url": "http://127.0.0.1:11434"}
+    with pytest.raises(ValueError):
+        deploy.set_llm(cfg, "two words")

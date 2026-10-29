@@ -125,7 +125,7 @@ static void send_signed(esp_websocket_client_handle_t c, const char *type, const
 
 static void send_hello(esp_websocket_client_handle_t c)
 {
-    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.9\",\"protocol_versions\":[1],\"recovered_state\":false}");
+    send_signed(c, "device.ready", "hello", "{\"boot_cause\":\"power_on\",\"firmware_version\":\"nt-voice-0.10\",\"protocol_versions\":[1],\"recovered_state\":false}");
 }
 
 // ---- incoming: verify first, act second. Anything that fails a check is dropped silently (counted, never answered).
@@ -831,6 +831,12 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(60));
     i2c_device_config_t tdc = {.dev_addr_length = I2C_ADDR_BIT_LEN_7, .device_address = 0x15, .scl_speed_hz = 400000};
     if (i2c_master_bus_add_device(bus, &tdc, &g_touch) != ESP_OK) { g_touch = NULL; ESP_LOGW(TAG, "touch controller not added"); }
+    else {
+        // The CST816 goes into auto-standby after a couple of idle seconds and then misses or NACKs the first touch: switch that off.
+        uint8_t dis_autosleep[2] = {0xFE, 0x01};
+        if (i2c_master_transmit(g_touch, dis_autosleep, 2, 50) == ESP_OK) ESP_LOGI(TAG, "touch controller: auto-standby off");
+        else ESP_LOGW(TAG, "touch controller: could not switch auto-standby off");
+    }
     gpio_config_t bc = {.mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE, .pin_bit_mask = (1ULL << NT_BTN_PLUS) | (1ULL << NT_BTN_BOOT) | (1ULL << NT_BTN_PWR)};
     ESP_ERROR_CHECK(gpio_config(&bc));
     xTaskCreate(playback_task, "playback", 6144, NULL, 6, NULL);
